@@ -17,10 +17,10 @@ namespace PMBB_NAMESPACE::JPEG {
 
 //===============================================================================================================================================================================================================
 
-const std::string_view xAppJPEG::c_BannerString =
+const std::string_view xAppEnc::c_BannerString =
 R"PMBBRAWSTRING(
 =============================================================================
-PJRD software v2.0
+PJRD software v3.0
 
 Copyright (c) 2020-2026, Jakub Stankowski, All rights reserved.
 
@@ -28,14 +28,13 @@ Developed at Poznan University of Technology, Poznan, Poland
 Authors: Jakub Stankowski, Tomasz Grajek
 
 The algorithm used in this software is described in following paper:
-T. Grajek, J. Stankowski, "Rate-Distortion Optimized Quantization in Motion JPEG",
-30th International Conference in Central Europe on Computer Graphics, Visualization and Computer Vision : WSCG 2022,
+T. Grajek, J. Stankowski, "Rate-Distortion Optimized Quantization in Motion JPEG", 30th International Conference in Central Europe on Computer Graphics, Visualization and Computer Vision : WSCG 2022,
 
 =============================================================================
 
 )PMBBRAWSTRING";
 
-const std::string_view xAppJPEG::c_HelpString =
+const std::string_view xAppEnc::c_HelpString =
 R"PMBBRAWSTRING(
 ============================================================================= 
 PJRD software v2.0
@@ -69,15 +68,16 @@ usage::jpeg-specific --------------------------------------------------------
                           [Default, Flat, SemiFlat] (default Default) [optional]
                           Default is based on RFC2435
  -ri   RestartInterval    Restart interval in number of MCUs [0=disabled, -1=MCU row] (optional, default 0) 
+ -ent  EntropyEncoder     Entropy encoder (optional, default=Huffman) [Huffman, Arithmetic]       
 
 usage::optimization ---------------------------------------------------------
  -oqc  OptQuantCoeffs     Enable RDOQ (default 1) [optional]
  -pzc  ProcessZeroCoeffs  Try optimize coeffs initially quantized to 0 (optional, default 0)
- -oet  OptEntropyTables   Calculate optimized Huffman tables (optional, default 1)
+ -oet  OptEntropyTables   Calculate optimized Huffman tables (optional, default 1 for Huff, 0 for Arith)
  -npb  NumOptPassesBlock  Number of optimization passes over one block   (optional, default 1)
  -npp  NumOptPassesPic    Number of optimization passes over one picture (optional, default 1)
- -lem  LambdaEstMode      Lambda estimation mode (optional, default ApproxExact)
-                          [Exhaustive, ApproxExact, ApproxFast]
+ -lem  LambdaEstMode      Lambda estimation mode (optional, default Exhaustive3)
+                          [Exhaustive5, Exhaustive3, ApproxExact, ApproxFast]
  -dcm  DistCalkMode       Distortion calculation mode (optional, default Exact)
                           [Exact = calculates full reconstruction, Approx = estimates SSD based on DCT coefficients]
                           
@@ -114,8 +114,9 @@ PJRD -i "A.bmp" -ps 512x384 -o "A.jpeg" -r "I01_rec.bmp" -ff BMP -q 90 -v 3
 
 //===============================================================================================================================================================================================================
 
-void xAppJPEG::registerCmdParams()
+void xAppEnc::registerCmdParams()
 {
+  PJRD_TRACE(2, "");
   //dispatcher params to be ignored
   m_CfgParser.addCmdFakeParm("", "DispatchForce");
   m_CfgParser.addCmdFakeParm("", "DispatchVerbose");
@@ -142,7 +143,9 @@ void xAppJPEG::registerCmdParams()
   m_CfgParser.addCmdParm("ent", "EntropyType"    , "", "EntropyType"    ); 
   //optimization
   m_CfgParser.addCmdParm("oqc", "OptQuantCoeffs"   , "", "OptQuantCoeffs"   );
+  m_CfgParser.addCmdParm("oqa", "OptQuantAlgorithm", "", "OptQuantAlgorithm");
   m_CfgParser.addCmdParm("pzc", "ProcessZeroCoeffs", "", "ProcessZeroCoeffs");
+  m_CfgParser.addCmdParm("nbc", "NumOptBestCands"  , "", "NumOptBestCands"  );
   m_CfgParser.addCmdParm("oet", "OptEntropyTables" , "", "OptEntropyTables" );
   m_CfgParser.addCmdParm("npb", "NumOptPassesBlock", "", "NumOptPassesBlock");
   m_CfgParser.addCmdParm("npp", "NumOptPassesPic"  , "", "NumOptPassesPic"  );
@@ -156,8 +159,9 @@ void xAppJPEG::registerCmdParams()
   m_CfgParser.addCmdParm("nth", "NumberOfThreads" , "", "NumberOfThreads" );  
   m_CfgParser.addCmdParm("v"  , "VerboseLevel"    , "", "VerboseLevel"    );  
 }
-bool xAppJPEG::loadConfiguration(int argc, const char* argv[])
+bool xAppEnc::loadConfiguration(int argc, const char* argv[])
 {
+  PJRD_TRACE(2, "");
   bool CommandlineResult = m_CfgParser.loadFromCmdln(argc, argv);
   if(!CommandlineResult)
   {
@@ -166,8 +170,9 @@ bool xAppJPEG::loadConfiguration(int argc, const char* argv[])
   }
   return CommandlineResult;
 }
-bool xAppJPEG::readConfiguration()
+bool xAppEnc::readConfiguration()
 {
+  PJRD_TRACE(2, "");
   bool AnyError = false;
 
   //basic io ----------------------------------------------------------------------------------------------------------
@@ -225,14 +230,17 @@ bool xAppJPEG::readConfiguration()
   if(m_Quality < 0 || m_Quality > 100) { m_ErrorLog += "!  Quality value have to be in range [0-100]\n"; AnyError = true; }
   m_QuantTabLayout  = m_CfgParser.cvtParam1stArg("QuantTabLayout"   , eQTLa::Default, xStrToQTLa);
   m_RestartInterval = m_CfgParser.getParam1stArg("RestartInterval", 0);
+  m_EntropyType     = m_CfgParser.cvtParam1stArg("EntropyType"      , eEntrTp::Huffman, xStrToEntrTp);
   
   //optimization ------------------------------------------------------------------------------------------------------
   m_OptQuantCoeffs    = m_CfgParser.getParam1stArg("OptQuantCoeffs"   , 1);
-  m_ProcessZeroCoeffs = m_CfgParser.getParam1stArg("ProcessZeroCoeffs", 0);
-  m_OptEntropyTables  = m_CfgParser.getParam1stArg("OptEntropyTables" , 1);
+  m_OptQuantAlgorithm = m_CfgParser.cvtParam1stArg("OptQuantAlgorithm", eQntOpt::Greedy, xStrToQntOpt);
+  m_ProcessZeroCoeffs = m_CfgParser.getParam1stArg("ProcessZeroCoeffs", 0);  
+  m_NumOptBestCands   = m_CfgParser.getParam1stArg("NumOptBestCands"  , 32);
+  m_OptEntropyTables  = m_CfgParser.getParam1stArg("OptEntropyTables" , (int32)(m_EntropyType == eEntrTp::Huffman));
   m_NumOptPassesBlock = m_CfgParser.getParam1stArg("NumOptPassesBlock", 1);
   m_NumOptPassesPic   = m_CfgParser.getParam1stArg("NumOptPassesPic"  , 1);
-  m_LambdaEstMode     = m_CfgParser.cvtParam1stArg("LambdaEstMode"    , eLmbd::ApproxExact, xStrToLmbd  );
+  m_LambdaEstMode     = m_CfgParser.cvtParam1stArg("LambdaEstMode"    , eLmbd::Exhaustive3, xStrToLmbd  );
   m_DistCalkMode      = m_CfgParser.cvtParam1stArg("DistCalkMode"     , eCalkMd::Exact    , xStrToCalkMd);
 
   //validation --------------------------------------------------------------------------------------------------------
@@ -262,8 +270,9 @@ bool xAppJPEG::readConfiguration()
 
   return !AnyError;
 }
-std::string xAppJPEG::formatConfiguration()
+std::string xAppEnc::formatConfiguration()
 {
+  PJRD_TRACE(2, "");
   std::string Config; Config.reserve(xMemory::getBestEffortSizePageBase());
   //basic io
   Config += "Run-time configuration:\n";
@@ -283,9 +292,12 @@ std::string xAppJPEG::formatConfiguration()
   Config += fmt::format("Quality           = {}\n", m_Quality                   );
   Config += fmt::format("QuantTabLayout    = {}\n", xQTLaToStr(m_QuantTabLayout));
   Config += fmt::format("RestartInterval   = {}{}\n", m_RestartInterval, m_RestartInterval == NOT_VALID ? "  (auto - one MCU row)" : "");
+  Config += fmt::format("EntropyType       = {}\n", xEntrTpToStr(m_EntropyType));
   //optimization
   Config += fmt::format("OptQuantCoeffs    = {}\n", m_OptQuantCoeffs   );
+  Config += fmt::format("OptQuantAlgorithm = {}\n", xQntOptToStr(m_OptQuantAlgorithm));
   Config += fmt::format("ProcessZeroCoeffs = {}\n", m_ProcessZeroCoeffs);
+  Config += fmt::format("NumOptBestCands   = {}\n", m_NumOptBestCands  );
   Config += fmt::format("OptEntropyTables  = {}\n", m_OptEntropyTables );
   Config += fmt::format("NumOptPassesBlock = {}\n", m_NumOptPassesBlock);
   Config += fmt::format("NumOptPassesPic   = {}\n", m_NumOptPassesPic  );  
@@ -313,8 +325,9 @@ std::string xAppJPEG::formatConfiguration()
 
   return Config;
 }
-eAppRes xAppJPEG::validateInputFiles()
+eAppRes xAppEnc::validateInputFiles()
 {
+  PJRD_TRACE(2, "");
   bool AnyError = false;
 
   if(m_NameMismatchActn == eActn::WARN || m_NameMismatchActn == eActn::STOP)
@@ -326,13 +339,15 @@ eAppRes xAppJPEG::validateInputFiles()
   if(AnyError) { return m_NameMismatchActn == eActn::STOP ? eAppRes::Error : eAppRes::Warning; }
   return eAppRes::Good;
 }
-std::string xAppJPEG::formatWarnings()
+std::string xAppEnc::formatWarnings()
 {
+  PJRD_TRACE(2, "");
   std::string Warnings = "";
   return Warnings;
 }
-void xAppJPEG::setupMultithreading()
+void xAppEnc::setupMultithreading()
 {
+  PJRD_TRACE(2, "");
   m_HardwareConcurency  = std::thread::hardware_concurrency();
 
   m_NumberOfThreadsUsed = 0;
@@ -346,8 +361,9 @@ void xAppJPEG::setupMultithreading()
     m_TPI.init(m_ThreadPool, MaxNumTasks, MaxNumTasks);
   }
 }
-void xAppJPEG::ceaseMultithreading()
+void xAppEnc::ceaseMultithreading()
 {
+  PJRD_TRACE(2, "");
   if(m_NumberOfThreadsUsed)
   {
     m_TPI.uninit();
@@ -355,8 +371,9 @@ void xAppJPEG::ceaseMultithreading()
     m_ThreadPool = nullptr;
   }
 }
-std::string xAppJPEG::formatMultithreading()
+std::string xAppEnc::formatMultithreading()
 {
+  PJRD_TRACE(2, "");
   std::string Info = "";
   Info += fmt::format("Multithreading:\n");
   Info += fmt::format("HardwareConcurency  = {}\n", m_HardwareConcurency );
@@ -366,8 +383,9 @@ std::string xAppJPEG::formatMultithreading()
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-eAppRes xAppJPEG::setupSeqAndBuffs()
+eAppRes xAppEnc::setupSeqAndBuffs()
 {
+  PJRD_TRACE(2, "");
   //check if file exists
   if(m_FileFormat == eFileFmt::RAW)
   {
@@ -463,62 +481,55 @@ eAppRes xAppJPEG::setupSeqAndBuffs()
 
   return eAppRes::Good;
 }
-eAppRes xAppJPEG::ceaseSeqAndBuffs()
+eAppRes xAppEnc::ceaseSeqAndBuffs()
 {
+  PJRD_TRACE(2, "");
   if(m_WriteBit) { m_OutFile.flush(); m_OutFile.closeFile(); }
   //TODO
 
   return eAppRes::Good;
 }
-void xAppJPEG::createProcessors()
+void xAppEnc::createProcessors()
 {
+  PJRD_TRACE(2, "");
   switch(m_Implementation)
   {
   case eImpl::Simple:
-    m_EncoderSimple.setVerboseLevel(m_VerboseLevel);
-    m_EncoderSimple.create(m_ThreadPool);
-    m_EncoderSimple.init(m_PictureSize, m_ChromaFormat, m_Quality, m_RestartIntervalUsed);
-    m_EncoderSimple.setEmit(true, true, true);
-    m_EncoderSimple.setGatherTimeStats(m_PrintDebug);
+    m_EncoderSimple = new JPEG::xEncoderSimple;
+    m_EncoderSimple->setVerboseLevel(m_VerboseLevel);
+    m_EncoderSimple->create(m_ThreadPool);
+    m_EncoderSimple->init(m_PictureSize, m_ChromaFormat, m_Quality, m_RestartIntervalUsed, m_EntropyType);
+    m_EncoderSimple->setEmit(true, true, true);
+    m_EncoderSimple->setGatherTimeStats(m_PrintDebug);
     if(m_Decode)
     {
-      m_DecoderSimple.setVerboseLevel(m_VerboseLevel);
-      m_DecoderSimple.create(m_ThreadPool);
-      m_DecoderSimple.setGatherTimeStats(m_PrintDebug);
+      m_DecoderSimple = new JPEG::xDecoderSimple;
+      m_DecoderSimple->setVerboseLevel(m_VerboseLevel);
+      m_DecoderSimple->create(m_ThreadPool);
+      m_DecoderSimple->setGatherTimeStats(m_PrintDebug);
     }
     break;
   case eImpl::Advanced:
-    m_EncoderRDOQ.setVerboseLevel(m_VerboseLevel);
-    m_EncoderRDOQ.create(m_PictureSize, m_ChromaFormat, m_ThreadPool);
-    m_EncoderRDOQ.setOptQuant  (m_OptQuantCoeffs, m_ProcessZeroCoeffs, m_LambdaEstMode);
-    m_EncoderRDOQ.setOptEntropy(m_OptEntropyTables);
-    m_EncoderRDOQ.setOptPass   (m_NumOptPassesBlock, m_NumOptPassesPic);
-    m_EncoderRDOQ.setOptClcMode(m_DistCalkMode, eCalkMd::Exact);
-    m_EncoderRDOQ.setGatherTimeStats(m_PrintDebug);
-    m_EncoderRDOQ.initBaseMarkers();
-    m_EncoderRDOQ.initQuant    (m_Quality, m_QuantTabLayout);
-    m_EncoderRDOQ.initEntropy  (m_RestartIntervalUsed);
-    m_EncoderRDOQ.setMarkerEmit(true, true, true);
+    m_EncoderRDOQ = new JPEG::xAdvancedEncoder;
+    m_EncoderRDOQ->setVerboseLevel(m_VerboseLevel);
+    m_EncoderRDOQ->create(m_PictureSize, m_ChromaFormat, m_EntropyType, m_ThreadPool);
+    m_EncoderRDOQ->setOptQuant  (m_OptQuantCoeffs, m_OptQuantAlgorithm, m_ProcessZeroCoeffs, m_NumOptBestCands, m_LambdaEstMode);
+    m_EncoderRDOQ->setOptEntropy(m_OptEntropyTables);
+    m_EncoderRDOQ->setOptPass   (m_NumOptPassesBlock, m_NumOptPassesPic);
+    m_EncoderRDOQ->setOptClcMode(m_DistCalkMode, eCalkMd::Exact);
+    m_EncoderRDOQ->setGatherTimeStats(m_PrintDebug);
+    m_EncoderRDOQ->initBaseMarkers();
+    m_EncoderRDOQ->initQuant    (m_Quality, m_QuantTabLayout);
+    m_EncoderRDOQ->initEntropy  (m_RestartIntervalUsed);
+    m_EncoderRDOQ->setMarkerEmit(true, true, true);
     if(m_Decode)
     {
-      m_DecoderSimple.setVerboseLevel(m_VerboseLevel);
-      m_DecoderSimple.create(m_ThreadPool);
-      m_DecoderSimple.setGatherTimeStats(m_PrintDebug);
+      m_DecoderSimple = new JPEG::xDecoderSimple;
+      m_DecoderSimple->setVerboseLevel(m_VerboseLevel);
+      m_DecoderSimple->create(m_ThreadPool);
+      m_DecoderSimple->setGatherTimeStats(m_PrintDebug);
     }
     break;
-#if X_PMBB_HAS_JPEG_TURBO
-  case eImpl::Turbo:
-    m_EncoderTurbo.create(m_PictureSize, m_ChromaFormat);
-    m_EncoderTurbo.init(m_Quality, true, true, false, 0);
-    m_EncoderTurbo.setGatherTimeStats(m_PrintDebug);
-    m_DecoderTurbo.create(m_PictureSize, m_ChromaFormat);
-    if(m_Decode)
-    {
-      m_DecoderTurbo.init(true);
-      m_DecoderTurbo.setGatherTimeStats(m_PrintDebug);
-    }
-    break;
-#endif //X_PMBB_HAS_JPEG_TURBO
   default: assert(0); break;
   }
 
@@ -526,11 +537,19 @@ void xAppJPEG::createProcessors()
   if(m_CvtClrSpc) { m_FramePSNR_RGB.resize(m_NumFrames, xMakeVec4<flt64>(std::numeric_limits<flt64>::quiet_NaN())); }
   m_FrameBits    .resize(m_NumFrames, 0);
 }
+void xAppEnc::destroyProcessors()
+{
+  PJRD_TRACE(2, "");
+  if(m_EncoderSimple != nullptr) { delete m_EncoderSimple; m_EncoderSimple = nullptr; }
+  if(m_DecoderSimple != nullptr) { delete m_DecoderSimple; m_DecoderSimple = nullptr; }
+  if(m_EncoderRDOQ   != nullptr) { delete m_EncoderRDOQ  ; m_EncoderRDOQ   = nullptr; }
+}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-eAppRes xAppJPEG::processAllFrames()
+eAppRes xAppEnc::encodeAllFrames()
 {
+  PJRD_TRACE(2, "");
   m_TimeStamp.sampleBeg();
 
   for(int32 f = 0; f < m_NumFrames; f++)
@@ -550,7 +569,7 @@ eAppRes xAppJPEG::processAllFrames()
     if(m_InvalidPelActn != eActn::SKIP)
     {
       eAppRes ValidationRes = validateFrames();
-      if(ValidationRes != eAppRes::Good) { return eAppRes::Error; }
+      if(ValidationRes != eAppRes::Good) { xErrMsg::printError("ERROR --> Validation failed"); return eAppRes::Error; }
     }
 
     uint64 T2 = m_GatherTime ? xTSC() : 0;
@@ -563,12 +582,9 @@ eAppRes xAppJPEG::processAllFrames()
     m_OutBuffer.reset();
     switch(m_Implementation)
     {
-      case eImpl::Simple  : m_EncoderSimple.encode(m_PicOrg4XX, &m_OutBuffer); break;
-      case eImpl::Advanced: m_EncoderRDOQ  .encode(m_PicOrg4XX, &m_OutBuffer); break;
-#if X_PMBB_HAS_JPEG_TURBO
-      case eImpl::Turbo   : m_EncoderTurbo .encode(m_PicOrg4XX, &m_OutBuffer); break;
-#endif //X_PMBB_HAS_JPEG_TURBO
-      default: return eAppRes::Error; break;
+      case eImpl::Simple  : m_EncoderSimple->encode(m_PicOrg4XX, &m_OutBuffer); break;
+      case eImpl::Advanced: m_EncoderRDOQ  ->encode(m_PicOrg4XX, &m_OutBuffer); break;
+      default: xErrMsg::printError("ERROR --> Unsuported encoder implementation"); return eAppRes::Error; break;
     }    
 
     uint64 T4 = m_GatherTime ? xTSC() : 0;
@@ -585,12 +601,9 @@ eAppRes xAppJPEG::processAllFrames()
     {
       switch(m_Implementation)
       {
-      case eImpl::Simple  : m_DecoderSimple.init(&m_OutBuffer); m_DecoderSimple.decode(&m_OutBuffer, m_PicRec4XX); break;
-      case eImpl::Advanced: m_DecoderSimple.init(&m_OutBuffer); m_DecoderSimple.decode(&m_OutBuffer, m_PicRec4XX); break;
-#if X_PMBB_HAS_JPEG_TURBO
-      case eImpl::Turbo   : m_DecoderTurbo .decode(&m_OutBuffer, m_PicRec4XX); break;
-#endif //X_PMBB_HAS_JPEG_TURBO
-      default: return eAppRes::Error; break;
+      case eImpl::Simple  : m_DecoderSimple->init(&m_OutBuffer); m_DecoderSimple->decode(&m_OutBuffer, m_PicRec4XX); break;
+      case eImpl::Advanced: m_DecoderSimple->init(&m_OutBuffer); m_DecoderSimple->decode(&m_OutBuffer, m_PicRec4XX); break;
+      default: xErrMsg::printError("ERROR --> Unsuported decoder implementation"); return eAppRes::Error; break;
       }      
     }
 
@@ -640,6 +653,7 @@ eAppRes xAppJPEG::processAllFrames()
       }
       fmt::print("Size[B]={:d} ", m_FrameBits[f]>>3);
       fmt::print("\n");
+      std::fflush(stdout);
     }
   }
 
@@ -647,7 +661,7 @@ eAppRes xAppJPEG::processAllFrames()
 
   return eAppRes::Good;
 }
-void xAppJPEG::reorderRGB()
+void xAppEnc::reorderRGB()
 {
   if(m_PictureType == eImgTp::BGR)
   {
@@ -659,7 +673,7 @@ void xAppJPEG::reorderRGB()
     m_PicOrgRGB->swapComponents(eCmp::C0, eCmp::C2); //BGR --> RGB
   }
 }
-eAppRes xAppJPEG::validateFrames()
+eAppRes xAppEnc::validateFrames()
 {
   bool CheckOK = true;
   if(!m_CvtClrSpc)
@@ -677,7 +691,7 @@ eAppRes xAppJPEG::validateFrames()
 
   return eAppRes::Good;
 }
-void xAppJPEG::cvtRGBtoYCbCr()
+void xAppEnc::cvtRGBtoYCbCr()
 {
   if(m_ChromaFormat == eCrF::CF444)
   {
@@ -709,7 +723,7 @@ void xAppJPEG::cvtRGBtoYCbCr()
     }
   }
 }
-void xAppJPEG::cvtYCbCrToRGB()
+void xAppEnc::cvtYCbCrToRGB()
 {
   if(m_ChromaFormat == eCrF::CF444)
   {
@@ -740,7 +754,7 @@ void xAppJPEG::cvtYCbCrToRGB()
       m_PicRecRGB->getBitDepth(), eClrSpcLC::BT601);
   }
 }
-flt64V4 xAppJPEG::calcPicPSNR(const xPicP* Tst, const xPicP* Ref, bool AvoidInfPSNR)
+flt64V4 xAppEnc::calcPicPSNR(const xPicP* Tst, const xPicP* Ref, bool AvoidInfPSNR)
 {
   assert(Ref != nullptr && Tst != nullptr);
   assert(Ref->isCompatible(Tst));
@@ -752,7 +766,7 @@ flt64V4 xAppJPEG::calcPicPSNR(const xPicP* Tst, const xPicP* Ref, bool AvoidInfP
   }
   return PSNR;
 }
-flt64 xAppJPEG::calcCmpPSNR(const xPicP* Tst, const xPicP* Ref, eCmp CmpId, bool AvoidInfPSNR)
+flt64 xAppEnc::calcCmpPSNR(const xPicP* Tst, const xPicP* Ref, eCmp CmpId, bool AvoidInfPSNR)
 {
   const int32   Width     = Ref->getWidth   ();
   const int32   Height    = Ref->getHeight  ();
@@ -772,7 +786,7 @@ flt64 xAppJPEG::calcCmpPSNR(const xPicP* Tst, const xPicP* Ref, eCmp CmpId, bool
 
   return PSNR;
 }
-flt64V4 xAppJPEG::calcPicPSNR(const xPicYUV* Tst, const xPicYUV* Ref, bool AvoidInfPSNR)
+flt64V4 xAppEnc::calcPicPSNR(const xPicYUV* Tst, const xPicYUV* Ref, bool AvoidInfPSNR)
 {
   assert(Ref != nullptr && Tst != nullptr);
   assert(Ref->isCompatible(Tst));
@@ -784,7 +798,7 @@ flt64V4 xAppJPEG::calcPicPSNR(const xPicYUV* Tst, const xPicYUV* Ref, bool Avoid
   }
   return PSNR;
 }
-flt64 xAppJPEG::calcCmpPSNR(const xPicYUV* Tst, const xPicYUV* Ref, eCmp CmpId, bool AvoidInfPSNR)
+flt64 xAppEnc::calcCmpPSNR(const xPicYUV* Tst, const xPicYUV* Ref, eCmp CmpId, bool AvoidInfPSNR)
 {
   const int32   Width     = Ref->getWidth   (CmpId);
   const int32   Height    = Ref->getHeight  (CmpId);
@@ -804,14 +818,16 @@ flt64 xAppJPEG::calcCmpPSNR(const xPicYUV* Tst, const xPicYUV* Ref, eCmp CmpId, 
 
   return PSNR;
 }
-std::string xAppJPEG::calibrateTimeStamp()
+std::string xAppEnc::calibrateTimeStamp()
 {
+  PJRD_TRACE(2, "");
   m_TimeStamp.calibrateTimeStamp();
   m_InvDurationDenominator = (flt64)1.0 / ((flt64)m_NumFrames * m_TimeStamp.getTicksPerMiliSec());
   return m_TimeStamp.formatCalibration();
 }
-void xAppJPEG::combineFrameStats()
+void xAppEnc::combineFrameStats()
 {
+  PJRD_TRACE(2, "");
   m_AvgPSNR_YUV       = xKBNS::Accumulate(m_FramePSNR_YUV) / m_NumFrames;
   if(m_CvtClrSpc) { m_AvgPSNR_RGB = xKBNS::Accumulate(m_FramePSNR_RGB) / m_NumFrames; }
   uint64 TotalBits    = std::accumulate(m_FrameBits.begin(), m_FrameBits.end(), (uint64)0);
@@ -822,8 +838,9 @@ void xAppJPEG::combineFrameStats()
   m_ComprRatio        = m_AvgFrameBytes / (flt64)(OneFrameSize);
 }
 
-std::string xAppJPEG::formatResultsStdOut()
+std::string xAppEnc::formatResultsStdOut()
 {
+  PJRD_TRACE(2, "");
   std::string Result; Result.reserve(xMemory::getBestEffortSizePageBase());
 
   Result += "SUMMARY:\n";
@@ -871,11 +888,8 @@ std::string xAppJPEG::formatResultsStdOut()
     Result += fmt::format("\nENCODER TIME STATS:\n");
     switch(m_Implementation)
     {
-    case eImpl::Simple  : Result += m_EncoderSimple.formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) + "\n"; break;
-    case eImpl::Advanced: Result += m_EncoderRDOQ  .formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) + "\n"; break;
-#if X_PMBB_HAS_JPEG_TURBO
-    case eImpl::Turbo   : Result += m_EncoderTurbo .formatAndResetStats("  ") + "\n"; break;
-#endif //X_PMBB_HAS_JPEG_TURBO
+    case eImpl::Simple  : Result += (m_EncoderSimple ? m_EncoderSimple->formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) : "Object inexistent") + "\n"; break;
+    case eImpl::Advanced: Result += (m_EncoderRDOQ   ? m_EncoderRDOQ  ->formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) : "Object inexistent") + "\n"; break;
     default: break;
     }
     if(m_Decode)
@@ -883,11 +897,9 @@ std::string xAppJPEG::formatResultsStdOut()
       Result += fmt::format("DECODER TIME STATS:\n");
       switch(m_Implementation)
       {
-      case eImpl::Simple  : Result += m_DecoderSimple.formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) + "\n"; break;
-      case eImpl::Advanced: Result += m_DecoderSimple.formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) + "\n"; break;
-#if X_PMBB_HAS_JPEG_TURBO
-      case eImpl::Turbo   : Result += m_DecoderTurbo .formatAndResetStats("  ") + "\n"; break;
-#endif //X_PMBB_HAS_JPEG_TURBO
+      case eImpl::Simple  : 
+      case eImpl::Advanced: 
+        Result += (m_DecoderSimple ? m_DecoderSimple->formatAndResetStats("  ", m_TimeStamp.getTicksPerMicroSec()) : "Object inexistent") + "\n"; break;
       default: break;
       }
     }

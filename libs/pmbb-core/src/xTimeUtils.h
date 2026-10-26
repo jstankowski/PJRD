@@ -1,5 +1,6 @@
 /*
     SPDX-FileCopyrightText: 2019-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2025 Patrycja Kaźmierczak <patrycja.kazmierczak@student.put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 
@@ -16,6 +17,7 @@ namespace PMBB_NAMESPACE {
 using tClock      = std::chrono::high_resolution_clock       ;
 using tTimePoint  = tClock::time_point                       ;
 using tDuration   = tClock::duration                         ;
+using tDurationNS = std::chrono::duration<double, std::nano >;
 using tDurationUS = std::chrono::duration<double, std::micro>;
 using tDurationMS = std::chrono::duration<double, std::milli>;
 using tDurationS  = std::chrono::duration<double            >;
@@ -46,6 +48,21 @@ using tDurationS  = std::chrono::duration<double            >;
   #endif//X_TSC_CAN_USE_RDTSCP
 
   #undef X_TSC_CAN_USE_RDTSCP
+
+#elif defined(X_PMBB_ARCH_ARM64)
+
+  static inline uint64 xTSC() { uint64_t Cnt; asm volatile("mrs %0, cntvct_el0;" : "=r"(Cnt) :: "memory"); return Cnt; }
+  #define X_IMPLEMENTATION_TSC "CNTCT"
+
+  #if defined(X_PMBB_OPERATING_SYSTEM_DARWIN) //Instruction Synchronization Barrier (ISB) sems somhow broken on Mx CPUs
+  static inline uint64 xExactTSC() { uint64_t Cnt; asm volatile("mrs %0, cntvct_el0;" : "=r"(Cnt) :: "memory"); return Cnt; }
+  #define X_IMPLEMENTATION_TSC_EXACT "CNTCT"
+  #else
+  static inline uint64 xExactTSC() { uint64_t Cnt; asm volatile("isb; mrs %0, cntvct_el0; isb;" : "=r"(Cnt) : : "memory"); return Cnt; }
+  #define X_IMPLEMENTATION_TSC_EXACT "CNTCT+ISB"
+  #endif
+    
+  static inline uint64 xPreciseTSC() { uint64_t Cnt; asm volatile ("isb; mrs %0, pmccntr_el0; isb;" : "=r"(Cnt) :: "memory"); return Cnt; } //may fail, by default most linux disteibution`s kernel disables access to PMU registers
 
 #else
 

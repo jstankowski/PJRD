@@ -74,14 +74,17 @@ std::string xCodecSimple::formatAndResetStats(const std::string Prefix, flt64 Ti
 //=====================================================================================================================================================================================
 // xEncoderSimple
 //=====================================================================================================================================================================================
-void xEncoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval)
+void xEncoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval, eEntrTp EntropyType)
 {
   initCodecCommon(PictureSize, ChromaFormat);
 
   m_NumMCUsInSlice = RestartInterval != 0 ? RestartInterval : m_NumMCUsInArea;
   m_Quality        = Quality    ;
+  m_EntropyType    = EntropyType;
 
-  int32 TypeSOF = 0;
+  int32 TypeSOF = NOT_VALID;
+  if(m_EntropyType == eEntrTp::Huffman   ) { TypeSOF = 0; }
+  if(m_EntropyType == eEntrTp::Arithmetic) { TypeSOF = 9; }
 
   //init markers
   m_APP0.InitDefault();
@@ -90,7 +93,8 @@ void xEncoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality,
   m_QTs[1].Init(1, eCmp::CB, Quality); //any chroma so use CB
   m_RestartInterval = RestartInterval;
   m_SOF.Init(TypeSOF, m_PictureHeight, m_PictureWidth, 8, ChromaFormat, 2);
-  m_HTs = xJFIF::xHuffTable::createDefaultHuffTables();
+  if(m_EntropyType == eEntrTp::Huffman   ) { m_HTs = xJFIF::xHuffTable::createDefaultHuffTables(    ); }
+  if(m_EntropyType == eEntrTp::Arithmetic) { m_ACs = xJFIF::xArithCond::createDefaultArithCond (true); }
   m_SOS.InitBaseline(m_SOF.getNumComponents(), 0, 1);
 
   m_NumOfSlices    = m_RestartInterval != 0 ? (int32)std::ceil((flt64)m_NumMCUsInArea / (flt64)m_RestartInterval) : 1;
@@ -99,7 +103,16 @@ void xEncoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality,
 
   //init toolbox
   m_Quant.Init(m_QTs);
-  m_EntropyHuffEncs = std::vector<xEntropyHuffEncoderDefault>(m_NumOfProcesors);
+
+  if(m_EntropyType == eEntrTp::Huffman   )
+  {
+    m_EntropyHuffEncs = std::vector<xEntropyHuffEncoderDefault>(m_NumOfProcesors);
+  }
+  if(m_EntropyType == eEntrTp::Arithmetic)
+  { 
+    m_EntropyAritEncs = std::vector<xEntropyAritEncoder>(m_NumOfProcesors);
+    for(int32 i = 0; i < (int32)m_EntropyAritEncs.size(); i++) { m_EntropyAritEncs[i].Init(m_ACs); }
+  }
   
   int32 NumBlocksInMCU      = std::accumulate(m_NumBlocksInMCU.cbegin(), m_NumBlocksInMCU.cend(), 0);
   int32 MaxEncodedSliceSize = m_NumMCUsInSlice * NumBlocksInMCU * c_BA * 2;
@@ -127,7 +140,8 @@ void xEncoderSimple::encode(const xPicYUV* InputPicture, xByteBuffer* OutputBuff
   if(m_EmitQuantTabs  ) { xJFIF::WriteDQT (OutputBuffer, m_QTs            ); }
   if(m_RestartInterval) { xJFIF::WriteDRI (OutputBuffer, m_RestartInterval); }
   xJFIF::WriteSOF(OutputBuffer, m_SOF);
-  if(m_EmitEntropyTabs) { xJFIF::WriteDHT(OutputBuffer, m_HTs); }
+  if(m_EmitEntropyTabs && m_EntropyType == eEntrTp::Huffman   ) { xJFIF::WriteDHT(OutputBuffer, m_HTs); }
+  if(m_EmitEntropyTabs && m_EntropyType == eEntrTp::Arithmetic) { xJFIF::WriteDAC(OutputBuffer, m_ACs); }
   xJFIF::WriteSOS (OutputBuffer, m_SOS);
   xEncodePicture(OutputBuffer, InputPicture);
   xJFIF::WriteEOI(OutputBuffer);
@@ -174,7 +188,8 @@ void xEncoderSimple::xEncodeSlice(xByteBuffer* SliceBuffer, const xPicYUV* Input
   uint64 TP = xTSC();
 
   SliceBuffer->reset();
-  m_EntropyHuffEncs[ProcesorIdx].StartSlice(SliceBuffer); 
+  if(m_EntropyType == eEntrTp::Huffman) { m_EntropyHuffEncs[ProcesorIdx].StartSlice(SliceBuffer); }
+  else                                  { m_EntropyAritEncs[ProcesorIdx].StartSlice(SliceBuffer); }
   const uint16* CmpPtrV   [] = { InputPicture->getAddr  (eCmp::LM), InputPicture->getAddr  (eCmp::CB), InputPicture->getAddr  (eCmp::CR), nullptr };
   const int32   CmpStrideV[] = { InputPicture->getStride(eCmp::LM), InputPicture->getStride(eCmp::CB), InputPicture->getStride(eCmp::CR),       0 };
 
@@ -186,7 +201,8 @@ void xEncoderSimple::xEncodeSlice(xByteBuffer* SliceBuffer, const xPicYUV* Input
     xEncodeMCU(CmpPtrV, CmpStrideV, MCU_Idx, ProcesorIdx);
   }
 
-  m_EntropyHuffEncs[ProcesorIdx].FinishSlice();
+  if(m_EntropyType == eEntrTp::Huffman) { m_EntropyHuffEncs[ProcesorIdx].FinishSlice(); }
+  else                                  { m_EntropyAritEncs[ProcesorIdx].FinishSlice(); }
   
   m_Ticks____Slice[ProcesorIdx] += xTSC() - TP;
 }
@@ -236,8 +252,8 @@ void xEncoderSimple::xEncodeMCU(const uint16* CmpPtrV[], const int32 CmpStrideV[
 void xEncoderSimple::xEncodeBlock(const uint16* SamplesOrg, eCmp CmpId, int32 ProcesorIdx)
 {
   const int32 QuantTabId  = m_SOF.getQuantTableId(CmpId);
-  //const int32 EntropyIdDC = m_SOS.getEntropyIdDC (CmpId);
-  //const int32 EntropyIdAC = m_SOS.getEntropyIdAC (CmpId);
+  const int32 EntropyIdDC = m_SOS.getEntropyIdDC (CmpId);
+  const int32 EntropyIdAC = m_SOS.getEntropyIdAC (CmpId);
 
   PMBB_ALIGN_JPEG_BLK int16 CoeffsTrans[c_BA];
   PMBB_ALIGN_JPEG_BLK int16 CoeffsQuant[c_BA];
@@ -252,7 +268,8 @@ void xEncoderSimple::xEncodeBlock(const uint16* SamplesOrg, eCmp CmpId, int32 Pr
   xScan::Scan(CoeffsScan, CoeffsQuant);
   uint64 TP3 = m_GatherTimeStats ? xTSC() : 0;
   //m_EntropyEnc.EncodeBlock(CoeffsScan, CmpId, HuffTabIdDC, HuffTabIdAC);
-  m_EntropyHuffEncs[ProcesorIdx].EncodeBlock(CoeffsScan, CmpId);
+  if(m_EntropyType == eEntrTp::Huffman) { m_EntropyHuffEncs[ProcesorIdx].EncodeBlock(CoeffsScan, CmpId); }
+  else                                  { m_EntropyAritEncs[ProcesorIdx].EncodeBlock(CoeffsScan, CmpId, EntropyIdDC, EntropyIdAC); }
   uint64 TP4 = m_GatherTimeStats ? xTSC() : 0;
 
   if (m_GatherTimeStats)
@@ -267,14 +284,17 @@ void xEncoderSimple::xEncodeBlock(const uint16* SamplesOrg, eCmp CmpId, int32 Pr
 //=====================================================================================================================================================================================
 // xDecoderSimple
 //=====================================================================================================================================================================================
-void xDecoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval)
+void xDecoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval, eEntrTp EntropyType)
 {
   initCodecCommon(PictureSize, ChromaFormat);
 
   m_NumMCUsInSlice = RestartInterval != 0 ? RestartInterval : m_NumMCUsInArea;
   m_Quality        = Quality    ;
+  m_EntropyType    = EntropyType;
 
-  int32 TypeSOF = 0;
+  int32 TypeSOF = NOT_VALID;
+  if(m_EntropyType == eEntrTp::Huffman   ) { TypeSOF = 0; }
+  if(m_EntropyType == eEntrTp::Arithmetic) { TypeSOF = 9; }
 
   //init markers
   m_APP0.InitDefault();
@@ -283,7 +303,8 @@ void xDecoderSimple::init(int32V2 PictureSize, eCrF ChromaFormat, int32 Quality,
   m_QTs[1].Init(1, eCmp::CB, Quality); //any chroma so use CB
   m_RestartInterval = RestartInterval;
   m_SOF.Init(TypeSOF, m_PictureHeight, m_PictureWidth, 8, ChromaFormat, 2);
-  m_HTs = xJFIF::xHuffTable::createDefaultHuffTables(); 
+  if(m_EntropyType == eEntrTp::Huffman   ) { m_HTs = xJFIF::xHuffTable::createDefaultHuffTables(    ); }
+  if(m_EntropyType == eEntrTp::Arithmetic) { m_ACs = xJFIF::xArithCond::createDefaultArithCond (true); }
   m_SOS.InitBaseline(m_SOF.getNumComponents(), 0, 1);
 
   xInitProcesors();
@@ -298,6 +319,7 @@ bool xDecoderSimple::init(xByteBuffer* InputBuffer)
   bool ReadDRI  = false;
   bool ReadSOF0 = false;
   bool ReadDHT  = false;
+  bool ReadDAC  = false;
   bool ReadSOS  = false;
 
   m_QTs.clear();
@@ -334,6 +356,10 @@ bool xDecoderSimple::init(xByteBuffer* InputBuffer)
         Result = xJFIF::ReadDHT(InputBuffer, m_HTs);
         if(Result) { ReadDHT = true; } else { return false; }
         break;
+      case xJFIF::eMarker::DAC:
+        Result = xJFIF::ReadDAC(InputBuffer, m_ACs);
+        if(Result) { ReadDAC = true; } else { return false; }
+        break;
       case xJFIF::eMarker::SOS:
         Result = xJFIF::ReadSOS(InputBuffer, m_SOS);
         if(Result) { ReadSOS = true; } else { return false; }
@@ -354,10 +380,12 @@ bool xDecoderSimple::init(xByteBuffer* InputBuffer)
   if(!ReadDQT || !ReadSOF0 || !ReadSOS) { return false; }
 
   initCodecCommon({ m_SOF.getWidth(), m_SOF.getHeight() }, m_SOF.DetermineChromaFormat());
+  m_EntropyType = m_SOF.determineEntropyType();
 
   if(!ReadAPP0) { m_APP0.InitDefault();  }
   if(!ReadDRI ) { m_RestartInterval = 0; }
-  if(!ReadDHT ) { m_HTs = xJFIF::xHuffTable::createDefaultHuffTables(    ); }
+  if(!ReadDHT && m_EntropyType == eEntrTp::Huffman   ) { m_HTs = xJFIF::xHuffTable::createDefaultHuffTables(    ); }
+  if(!ReadDAC && m_EntropyType == eEntrTp::Arithmetic) { m_ACs = xJFIF::xArithCond::createDefaultArithCond (true); }
 
   m_NumMCUsInSlice = m_RestartInterval != 0 ? m_RestartInterval : m_NumMCUsInArea;
   m_Quality        = NOT_VALID;
@@ -395,9 +423,17 @@ void xDecoderSimple::xInitProcesors()
   //init toolbox
   m_Quant.Init(m_QTs);
 
-  m_HuffDecoderBank.Init(m_HTs);
-  m_EntropyHuffDecs = std::vector<xEntropyHuffDecoder>(m_NumOfProcesors);
-  for(int32 i = 0; i < (int32)m_EntropyHuffDecs.size(); i++) { m_EntropyHuffDecs[i].SetDecoders(m_HuffDecoderBank); }
+  if(m_EntropyType == eEntrTp::Huffman)
+  {
+    m_HuffDecoderBank.Init(m_HTs);
+    m_EntropyHuffDecs = std::vector<xEntropyHuffDecoder>(m_NumOfProcesors);
+    for(int32 i = 0; i < (int32)m_EntropyHuffDecs.size(); i++) { m_EntropyHuffDecs[i].SetDecoders(m_HuffDecoderBank); }
+  }
+  if(m_EntropyType == eEntrTp::Arithmetic)
+  {
+    m_EntropyAritDecs.resize(m_NumOfProcesors); // = std::vector<xEntropyAritDecoder>(m_NumOfProcesors);
+    for(int32 i = 0; i < (int32)m_EntropyAritDecs.size(); i++) { m_EntropyAritDecs[i].Init(m_ACs); }
+  }
 
   int32 NumBlocksInMCU      = std::accumulate(m_NumBlocksInMCU.cbegin(), m_NumBlocksInMCU.cend(), 0);
   int32 MaxEncodedSliceSize = m_NumMCUsInSlice * NumBlocksInMCU * c_BA * 2;
@@ -470,7 +506,8 @@ void xDecoderSimple::xDecodeSlice(xPicYUV* OutputPicture, xByteBuffer* SliceBuff
 {
   uint64 TP = xTSC();
 
-  m_EntropyHuffDecs[ProcesorIdx].StartSlice(SliceBuffer);
+  if(m_EntropyType == eEntrTp::Huffman) { m_EntropyHuffDecs[ProcesorIdx].StartSlice(SliceBuffer); }
+  else                                  { m_EntropyAritDecs[ProcesorIdx].StartSlice(SliceBuffer); }
   uint16*     CmpPtrV   [] = { OutputPicture->getAddr  (eCmp::LM), OutputPicture->getAddr  (eCmp::CB), OutputPicture->getAddr  (eCmp::CR), nullptr };
   const int32 CmpStrideV[] = { OutputPicture->getStride(eCmp::LM), OutputPicture->getStride(eCmp::CB), OutputPicture->getStride(eCmp::CR),       0 };
 
@@ -482,7 +519,8 @@ void xDecoderSimple::xDecodeSlice(xPicYUV* OutputPicture, xByteBuffer* SliceBuff
     xDecodeMCU(CmpPtrV, CmpStrideV, MCU_Idx, ProcesorIdx);
   }
 
-  m_EntropyHuffDecs[ProcesorIdx].FinishSlice();
+  if(m_EntropyType == eEntrTp::Huffman) { m_EntropyHuffDecs[ProcesorIdx].FinishSlice(); }
+  else                                  { m_EntropyAritDecs[ProcesorIdx].FinishSlice(); }
 
   m_Ticks____Slice[ProcesorIdx] += xTSC() - TP;
 }
@@ -540,7 +578,8 @@ void xDecoderSimple::xDecodeBlock(uint16* SamplesDec, eCmp CmpId, int32 Procesor
   PMBB_ALIGN_JPEG_BLK int16 CoeffsTrans[c_BA];
 
   uint64 TP0 = m_GatherTimeStats ? xTSC() : 0;
-  m_EntropyHuffDecs[ProcesorIdx].DecodeBlock(CoeffsScan, CmpId, EntropyIdDC, EntropyIdAC);
+  if(m_EntropyType == eEntrTp::Huffman) { m_EntropyHuffDecs[ProcesorIdx].DecodeBlock(CoeffsScan, CmpId, EntropyIdDC, EntropyIdAC); }
+  else                                  { m_EntropyAritDecs[ProcesorIdx].DecodeBlock(CoeffsScan, CmpId, EntropyIdDC, EntropyIdAC); }
   uint64 TP1 = m_GatherTimeStats ? xTSC() : 0;
   xScan::InvScan(CoeffsQuant, CoeffsScan);
   uint64 TP2 = m_GatherTimeStats ? xTSC() : 0;

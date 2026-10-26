@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2019-2024 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2019-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 
@@ -12,13 +12,14 @@
 #include "xSeqLST.h"
 #include "xJPEG_CodecSimple.h"
 #include "xJPEG_Encoder.h"
+#include "xMiscUtilsBASE.h"
 #include "xMiscUtilsCORE.h"
 
 namespace PMBB_NAMESPACE::JPEG {
 
 //===============================================================================================================================================================================================================
 
-class xAppJPEG
+class xAppEnc
 {
 public:
   static const std::string_view c_BannerString;
@@ -46,9 +47,12 @@ public:
   int32       m_Quality        ;
   eQTLa       m_QuantTabLayout ;
   int32       m_RestartInterval;
+  eEntrTp     m_EntropyType    ;
   //optimization
   int32       m_OptQuantCoeffs   ;
+  eQntOpt     m_OptQuantAlgorithm;
   int32       m_ProcessZeroCoeffs;
+  int32       m_NumOptBestCands  ;
   int32       m_OptEntropyTables ;
   int32       m_NumOptPassesBlock;
   int32       m_NumOptPassesPic  ;
@@ -100,13 +104,9 @@ protected:
   xStream      m_OutFile;
 
   //encoders and decoders
-  JPEG::xEncoderSimple   m_EncoderSimple;
-  JPEG::xDecoderSimple   m_DecoderSimple;
-#if X_PMBB_HAS_JPEG_TURBO
-  JPEG::xEncoderTurbo    m_EncoderTurbo;
-  JPEG::xDecoderTurbo    m_DecoderTurbo;
-#endif //X_PMBB_HAS_JPEG_TURBO
-  JPEG::xAdvancedEncoder m_EncoderRDOQ;
+  JPEG::xEncoderSimple*   m_EncoderSimple = nullptr;
+  JPEG::xDecoderSimple*   m_DecoderSimple = nullptr;
+  JPEG::xAdvancedEncoder* m_EncoderRDOQ   = nullptr;
 
   //data & stats
   std::vector<flt64V4> m_FramePSNR_YUV;
@@ -148,7 +148,9 @@ public:
   eAppRes     setupSeqAndBuffs ();
   eAppRes     ceaseSeqAndBuffs ();
   void        createProcessors ();
-  eAppRes     processAllFrames ();
+  void        destroyProcessors();
+  eAppRes     encodeAllFrames  ();
+  eAppRes     analyzeAllFrames ();
 
   void        reorderRGB    ();
   eAppRes     validateFrames();
@@ -173,5 +175,17 @@ public:
 };
 
 //===============================================================================================================================================================================================================
+// PJRD trace
+//===============================================================================================================================================================================================================
+static inline void x_PJRD_TRACE_FUN(const std::string& Function, int32 Level, const std::string& Description)
+{
+  std::string LevelPrefix; for(int32 i = 0; i < (Level); i++) { LevelPrefix += " "; }
+  fmt::print("#{} TRACE {} --> {}\n", LevelPrefix, Function, Description); std::fflush(stdout);
+}
 
+#if X_PMBB_CPP20
+#  define PJRD_TRACE(Level, Description) { if(m_VerboseLevel >= 9) { x_PJRD_TRACE_FUN(std::source_location::function_name(), (Level), Description); } }
+#else //X_PMBB_CPP20
+#  define PJRD_TRACE(Level, Description) { if(m_VerboseLevel >= 9) { x_PJRD_TRACE_FUN(__func__, (Level), Description); } }
+#endif //X_PMBB_CPP20
 } //end of namespace PMBB::JPEG

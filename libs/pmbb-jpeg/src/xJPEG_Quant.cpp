@@ -180,7 +180,7 @@ void xQuantNEON::QuantScale(int16* restrict Dst, const int16* Src, const uint16*
     uint16x8_t RecipV = vld1q_u16(        (Reciprocal + i));
     int16x8_t  ShiftV = vnegq_s16(vld1q_s16((int16*)(Shift + i))); //negate shift since right shift wil be performed as "negative" left shift
     //extract sign
-    int16x8_t  SignMaskV  = vshrq_n_s16(CoeffV, 31);
+    int16x8_t  SignMaskV  = vshrq_n_s16(CoeffV, 15);
     uint16x8_t CoeffAbsV  = vreinterpretq_u16_s16(vabsq_s16(CoeffV));
     //quant
     uint16x8_t CoeffV_S1  = vaddq_u16(CoeffAbsV, CorrcV);

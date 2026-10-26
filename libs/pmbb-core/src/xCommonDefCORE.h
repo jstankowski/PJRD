@@ -88,6 +88,44 @@ namespace PMBB_NAMESPACE {
 #endif
 #define X_SIMD_CAN_USE_AVX512 (X_SIMD_HAS_AVX512 && PMBB_SIMD_ALLOWED && PMBB_USE_SIMD)
 
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// SIMD section - AVX512 above x86-64-v4
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#if X_SIMD_HAS_AVX512 && defined(__AVX512BITALG__) && defined(__AVX512VBMI2__) && defined(__AVX512VBMI__) && defined(__AVX512IFMA__) &&  defined(__AVX512VPOPCNTDQ__) &&  defined(__AVX512BF16__) && defined(__AVX512VNNI__) && defined(__VPCLMULQDQ__)
+#define X_SIMD_HAS_AVX512_ZEN4 1
+#else
+#define X_SIMD_HAS_AVX512_ZEN4 0
+#endif
+#define X_SIMD_CAN_USE_AVX512_ZEN4 (X_SIMD_HAS_AVX512_ZEN4 && PMBB_SIMD_ALLOWED && PMBB_USE_SIMD)
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// SIMD section - NEON (corresponding to ARMv8.0) + other ARM64 extensions
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+//NEON
+#if defined (__ARM_NEON)
+#define X_SIMD_HAS_NEON 1
+#else
+#define X_SIMD_HAS_NEON 0
+#endif
+#define X_SIMD_CAN_USE_NEON (X_SIMD_HAS_NEON && PMBB_SIMD_ALLOWED && PMBB_USE_SIMD)
+
+//CRC32 extension
+#if defined(__ARM_FEATURE_CRC32)
+#define X_PMBB_HAS_ARM_CRC32 1
+#else
+#define X_PMBB_HAS_ARM_CRC32 0
+#endif
+#define X_PMBB_CAN_USE_ARM_CRC32 (X_PMBB_HAS_ARM_CRC32)
+
+//CRYPTO extension
+#if defined(__ARM_FEATURE_CRYPTO)
+#define X_PMBB_HAS_ARM_CRYPTO 1
+#else
+#define X_PMBB_HAS_ARM_CRYPTO 0
+#endif
+#define X_PMBB_CAN_USE_ARM_CRYPTO (X_SIMD_HAS_NEON && X_PMBB_HAS_ARM_CRYPTO)
+
 //===============================================================================================================================================================================================================
 // Basic ops
 //===============================================================================================================================================================================================================
@@ -232,10 +270,11 @@ enum class eCmp : int32 //component identifier
   CB = 1,     //Chroma Cb (U)
   CR = 2,     //Chroma Cr (V)
 
-  //R G B
+  //R G B (A)
   R = 0,
   G = 1,
   B = 2,
+  A = 3,
 };
 
 enum class eCrF : int16 //chroma format
@@ -269,8 +308,8 @@ enum class eClrSpcLC : int32 //colorspaces using luma and chromas
   INVALID   = -1,
   //standardized YCbCr
   BT601     = 0,
-  SMPTE170M = 0,
-  JPEG      = 0,
+  SMPTE170M = 0, //alias
+  JPEG      = 0, //alias
   BT709     = 1,
   SMPTE240M = 2,
   BT2020    = 3,

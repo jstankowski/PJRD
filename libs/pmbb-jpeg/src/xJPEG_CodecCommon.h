@@ -30,6 +30,7 @@ protected:
   eCrF    m_ChromaFormat    = eCrF::INVALID;
   int32   m_NumOfComponents = NOT_VALID;
   int32   m_ProcessChroma   = false;
+  eEntrTp m_EntropyType     = eEntrTp::INVALID;
 
   std::array<int32, c_NC> m_SampFactorHor     = {0};
   std::array<int32, c_NC> m_SampFactorVer     = {0};
@@ -136,6 +137,7 @@ class xCodecImplCommon : public xCodecCommon
 public:
   using tQTV = std::vector<xJFIF::xQuantTable>;
   using tHTV = std::vector<xJFIF::xHuffTable >;
+  using tACV = std::vector<xJFIF::xArithCond >;
 protected:
   //Markers
   xJFIF::xAPP0 m_APP0;
@@ -143,6 +145,7 @@ protected:
   int32        m_RestartInterval = 0;
   xJFIF::xSOF  m_SOF;
   tHTV         m_HTs; //huffman tables 
+  tACV         m_ACs; //arithmetic conditioning 
   xJFIF::xSOS  m_SOS;
 
   //Threading

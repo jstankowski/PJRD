@@ -107,13 +107,13 @@ void testCustomHuffmanTableGeneration(const uint8* HuffLenghts, const uint8* Cod
   xJFIF::xHuffTable HT;
   HT.InitCustom(0, HuffClass, LengthTable.data());
 
-  //check if DHT code length entries are the same (checking DTH code sumbol is useless - they can differ)
+  //check if DHT code length entries are the same (checking DTH code symbol is useless - they can differ)
   for(int32 i = 0; i < xJPEG_Constants::c_NumCodeLenghts; i++)
   {
     CHECK(HT.getCodeLengths()[i] == CodeLengths[i]);
   }
 
-  //check if decoded Huffman code lenghts are same (checking decoded code sumbols is useless - they can differ)
+  //check if decoded Huffman code lenghts are same (checking decoded code symbols is useless - they can differ)
   if(HuffClass == xJFIF::xHuffTable::tClass::DC)
   {
     xHuffEncoderDC_Test HE;

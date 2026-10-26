@@ -19,7 +19,7 @@ endif() #PMBB_GENERATE_MULTI_MICROARCH_LEVEL_BINARIES
 # Testing can be enabled for non-PMBB_GENERATE_MULTI_MICROARCH_LEVEL_BINARIES builds only
 #=========================================================================================================================================
 if(CMAKE_TESTING_ENABLED AND (NOT PMBB_GENERATE_MULTI_MICROARCH_LEVEL_BINARIES))
-  set(LIST_TESTS "Transform" "Quant" "Scan" "OptUtils" "EntropyUtils" "Huffman" "EntropyHuffman" "JFIF")
+  set(LIST_TESTS "Transform" "Quant" "Scan" "OptUtils" "EntropyUtils" "Huffman" "EntropyHuffman" "Arithm" "EntropyArithm" "JFIF")
   PMBB_setup_lib_test()
 endif()
   

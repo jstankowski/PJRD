@@ -18,48 +18,48 @@ namespace PMBB_NAMESPACE {
 class PMBB_ALIGN_CACHE xByteBuffer
 {
 protected:
-  byte*    m_Buffer = nullptr;
-
+  byte*    m_Buffer     = nullptr  ;
   int32    m_BufferSize = NOT_VALID;
   int32    m_DataSize   = NOT_VALID;
-  int32    m_DataOffset = NOT_VALID;
-  
-  uint64   m_EightCC   = 0;
-  int64    m_POC       = std::numeric_limits<int64>::min();
-  int64    m_Timestamp = std::numeric_limits<int64>::min();
-
-  bool     m_OwnsBuffer;
+  int32    m_DataOffset = NOT_VALID;  
+  uint64   m_EightCC    = 0        ;
+  int64    m_POC        = std::numeric_limits<int64>::min();
+  int64    m_Timestamp  = std::numeric_limits<int64>::min();  
   
 public:
   //base functions
-  xByteBuffer               ();
-  xByteBuffer               (int32 BufferSize) { create(BufferSize); }
-  xByteBuffer               (xByteBuffer* RefBuffer) { create(RefBuffer); }
-  xByteBuffer               (byte* Memmory, int32 BufferSize                ) { m_BufferSize = BufferSize; m_DataSize = 0;        m_DataOffset = 0; m_OwnsBuffer = false; m_Buffer = Memmory; }
-  xByteBuffer               (byte* Memmory, int32 BufferSize, int32 DataSize) { m_BufferSize = BufferSize; m_DataSize = DataSize; m_DataOffset = 0; m_OwnsBuffer = false; m_Buffer = Memmory; }
-  ~xByteBuffer              () { destroy(); }
+  xByteBuffer ();
+  xByteBuffer (int32        BufferSize) { create(BufferSize); }
+  xByteBuffer (const xByteBuffer&  Src) = delete; //copy constructor
+  xByteBuffer (      xByteBuffer&& Src) noexcept; //move constructor 
+  ~xByteBuffer() { destroy(); }
 
-  void     create           (int32 BufferSize);
-  void     create           (xByteBuffer* RefBuffer) { create(RefBuffer->getBufferSize()); }
-  void     duplicate        (xByteBuffer* RefBuffer) { create(RefBuffer->getBufferSize()); copy(RefBuffer); }
-  void     destroy          ();
-  void     resize           (int32 BufferSize) { destroy(); create(BufferSize); }
-  void     reset            () { m_DataSize = 0; m_DataOffset = 0; }
-  void     clear            () { reset(); std::memset(m_Buffer, 0, m_BufferSize); }
-  void     copy             (const xByteBuffer* Src);
-  void     copy             (byte* Memmory, int32 Size);
+  xByteBuffer& operator=(const xByteBuffer&  Src) = delete; //copy assignment operator
+  xByteBuffer& operator=(      xByteBuffer&& Src) noexcept; //move assignment operator
+
+  void create          (int32 BufferSize);
+  void create          (xByteBuffer* RefBuffer) { create(RefBuffer->getBufferSize()); }
+  void duplicate       (xByteBuffer* RefBuffer) { create(RefBuffer->getBufferSize()); copy(RefBuffer); }
+  void destroy         ();
+  void resize          (int32 BufferSize);
+  void reset           () { m_DataSize = 0; m_DataOffset = 0; }
+  void clear           () { reset(); std::memset(m_Buffer, 0, m_BufferSize); }
+  void copy            (const xByteBuffer* Src);
+  void copy            (byte* Memmory, int32 Size);
+  void ensureRemainSize(int32 RequiredNumBytes);
 
   //tool functions
-  inline bool   isSameSize       (int32 Size            ) const { return (m_BufferSize==Size); }
-  inline bool   isSameSize       (xByteBuffer* RefBuffer) const { assert(RefBuffer!=nullptr); return isSameSize(RefBuffer->m_BufferSize); }
+  inline bool isSameSize    (int32 Size            ) const { return (m_BufferSize==Size); }
+  inline bool isSameSize    (xByteBuffer* RefBuffer) const { assert(RefBuffer!=nullptr); return isSameSize(RefBuffer->m_BufferSize); }
 
   //comparison functions
-  inline bool   isSameDataSize   (xByteBuffer* RefBuffer) const { return (getDataSize() == RefBuffer->getDataSize()); }
-  inline bool   isSameData       (xByteBuffer* RefBuffer) const { return ( isSameDataSize(RefBuffer) || std::memcmp(getReadPtr(), RefBuffer->getReadPtr(), getDataSize()) == 0); }
+  inline bool isSameDataSize(xByteBuffer* RefBuffer) const { return (getDataSize() == RefBuffer->getDataSize()); }
+  inline bool isSameData    (xByteBuffer* RefBuffer) const { return ( isSameDataSize(RefBuffer) || std::memcmp(getReadPtr(), RefBuffer->getReadPtr(), getDataSize()) == 0); }
 
   //peek - read from beggining (pointed by DataOffset) without changing DataOffset (BE = Big Endian, LE = Little Endian)
   inline bool   peekBytes (byte* Dst, int32 Size) const;
   inline uint8  peekU8    () const { assert(m_DataSize >= 1); return             (*((uint8 *)(m_Buffer + m_DataOffset))); }
+  inline uint8  peekI8    () const { assert(m_DataSize >= 1); return             (*(( int8 *)(m_Buffer + m_DataOffset))); }
   inline uint16 peekU16_BE() const { assert(m_DataSize >= 2); return xSwapBytes16(*((uint16*)(m_Buffer + m_DataOffset))); }
   inline uint16 peekU16_LE() const { assert(m_DataSize >= 2); return             (*((uint16*)(m_Buffer + m_DataOffset))); }  
   inline uint32 peekU32_BE() const { assert(m_DataSize >= 4); return xSwapBytes32(*((uint32*)(m_Buffer + m_DataOffset))); }
@@ -113,32 +113,33 @@ public:
   uint32   read  (xStream* Stream, int32 Size);
   uint32   read  (xStream* Stream            ) { return read(Stream, m_BufferSize); }
   uint32   append(xStream* Stream, int32 Size);
-  uint32   append(xStream* Stream            ) { return append(Stream, getRemainingSize()); }
+  uint32   append(xStream* Stream            ) { return append(Stream, getRemainSize()); }
 
   //interfaces
-  byte*       getReadPtr       (                 )       { return m_Buffer + m_DataOffset;}
-  const byte* getReadPtr       (                 ) const { return m_Buffer + m_DataOffset; }
-  byte*       getWritePtr      (                 )       { return m_Buffer + m_DataOffset + m_DataSize; }
-  int32       getDataSize      (                 ) const { return m_DataSize; }
-  void        setDataSize      (int32 Size       )       { m_DataSize = Size; }
-  void        modifyDataSize   (int32 DeltaSize  )       { m_DataSize += DeltaSize; }
-  int32       getDataOffset    (                 ) const { return m_DataOffset;      }
-  void        setDataOffset    (int32 DataOffset )       { m_DataOffset = DataOffset;}
-  void        modifyDataOffset (int32 DeltaOffset)       { m_DataOffset += DeltaOffset; }
-  void        modifyRead       (int32 NumBytes   )       { modifyDataOffset(NumBytes); modifyDataSize(-NumBytes); }
-  void        modifyWritten    (int32 NumBytes   )       { modifyDataSize(NumBytes); }
-  int32       getRemainingSize (                 ) const { return m_BufferSize - (m_DataSize + m_DataOffset); }
+  byte*       getReadPtr      (                 )       { return m_Buffer + m_DataOffset;}
+  const byte* getReadPtr      (                 ) const { return m_Buffer + m_DataOffset; }
+  byte*       getWritePtr     (                 )       { return m_Buffer + m_DataOffset + m_DataSize; }
+  int32       getDataSize     (                 ) const { return m_DataSize; }
+  void        setDataSize     (int32 Size       )       { m_DataSize = Size; }
+  void        modifyDataSize  (int32 DeltaSize  )       { m_DataSize += DeltaSize; }
+  int32       getDataOffset   (                 ) const { return m_DataOffset;      }
+  void        setDataOffset   (int32 DataOffset )       { m_DataOffset = DataOffset;}
+  void        modifyDataOffset(int32 DeltaOffset)       { m_DataOffset += DeltaOffset; }
+  void        modifyRead      (int32 NumBytes   )       { modifyDataOffset(NumBytes); modifyDataSize(-NumBytes); }
+  void        modifyWritten   (int32 NumBytes   )       { modifyDataSize(NumBytes); }
+  int32       getRemainSize   (                 ) const { return m_BufferSize - (m_DataSize + m_DataOffset); }
+  bool        isAligned       (                 ) const { return m_DataOffset == 0;}
            
-  int32       getBufferSize    (                 ) const { return m_BufferSize;     }
-  byte*       getBufferPtr     (                 ) const { return m_Buffer;         }
+  int32       getBufferSize   (                 ) const { return m_BufferSize;     }
+  byte*       getBufferPtr    (                 ) const { return m_Buffer;         }
                                                                            
-  void        setEightCC       (uint64 EightCC   )       { m_EightCC = EightCC;     }
-  uint64      getEightCC       (                 ) const { return m_EightCC;        }
-  void        setPOC           (int64 POC        )       { m_POC = POC;             }
-  int64       getPOC           (                 ) const { return m_POC;            }
-  void        setTimestamp     (int64 Timestamp  )       { m_Timestamp = Timestamp; }
-  int64       getTimestamp     (                 ) const { return m_Timestamp;      }
-  void        copyDescriptors  (xByteBuffer* Ref )       { m_EightCC = Ref->m_EightCC; m_POC = Ref->m_POC; m_Timestamp = Ref->m_Timestamp; }
+  void        setEightCC      (uint64 EightCC   )       { m_EightCC = EightCC;     }
+  uint64      getEightCC      (                 ) const { return m_EightCC;        }
+  void        setPOC          (int64 POC        )       { m_POC = POC;             }
+  int64       getPOC          (                 ) const { return m_POC;            }
+  void        setTimestamp    (int64 Timestamp  )       { m_Timestamp = Timestamp; }
+  int64       getTimestamp    (                 ) const { return m_Timestamp;      }
+  void        copyDescriptors (xByteBuffer* Ref )       { m_EightCC = Ref->m_EightCC; m_POC = Ref->m_POC; m_Timestamp = Ref->m_Timestamp; }
 };
 
 //===============================================================================================================================================================================================================

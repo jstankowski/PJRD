@@ -5,9 +5,9 @@ function (detect_host_x86_64_MFL HOST_x86_64_MFL)
 
   #=========================================================================================================================================
   # Check for AVX512 support
-  if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  if(PMBB_COMPILER_IS_GCC_OR_CLANG)
     set(CMAKE_REQUIRED_FLAGS "-skylake-avx512")
-  elseif(MSVC)
+  elseif(PMBB_COMPILER_IS_MSVC)
     set(CMAKE_REQUIRED_FLAGS "/arch:AVX512")
   endif()
 
@@ -29,9 +29,9 @@ function (detect_host_x86_64_MFL HOST_x86_64_MFL)
 
   #=========================================================================================================================================
   # Check for AVX2 support
-  if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  if(PMBB_COMPILER_IS_GCC_OR_CLANG)
     set(CMAKE_REQUIRED_FLAGS "-mavx2")
-  elseif(MSVC)
+  elseif(PMBB_COMPILER_IS_MSVC)
     set(CMAKE_REQUIRED_FLAGS "/arch:AVX2")
   endif()
 
@@ -53,9 +53,9 @@ function (detect_host_x86_64_MFL HOST_x86_64_MFL)
 
   #=========================================================================================================================================
   # Check for SSE4.2 support
-  if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  if(PMBB_COMPILER_IS_GCC_OR_CLANG)
     set(CMAKE_REQUIRED_FLAGS "-msse4.2")
-  elseif(MSVC)
+  elseif(PMBB_COMPILER_IS_MSVC)
     set(CMAKE_REQUIRED_FLAGS "/arch:SSE4.2")
   endif()
 
@@ -86,9 +86,9 @@ function (detect_host_x86_64_MFL HOST_x86_64_MFL)
   #=========================================================================================================================================
   # Check for SSE2 support
 
-  if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  if(PMBB_COMPILER_IS_GCC_OR_CLANG)
     set(CMAKE_REQUIRED_FLAGS "-msse2")
-  elseif(MSVC)
+  elseif(PMBB_COMPILER_IS_MSVC)
     set(CMAKE_REQUIRED_FLAGS "/arch:SSE2")
   endif()
 

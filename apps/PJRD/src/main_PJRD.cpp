@@ -21,9 +21,9 @@ using namespace PMBB_NAMESPACE::JPEG;
 
 int32 APP_MAIN(int argc, char* argv[], char* /*envp*/[])
 {
-  fmt::printf("%s\n", xAppJPEG::c_BannerString);
+  fmt::printf("%s\n", xAppEnc::c_BannerString);
   tTimePoint AppBeg = tClock::now();
-  xAppJPEG AppJPEG;
+  xAppEnc AppJPEG;
 
   //===================================================================================================================
   //configuring
@@ -32,9 +32,9 @@ int32 APP_MAIN(int argc, char* argv[], char* /*envp*/[])
   //parsing configuration
   AppJPEG.registerCmdParams();
   bool CfgLoadResult = AppJPEG.loadConfiguration(argc, const_cast<const char**>(argv));
-  if(!CfgLoadResult) { xErrMsg::printError(AppJPEG.getErrorLog() + "\n\n", xAppJPEG::c_HelpString); return EXIT_FAILURE; }
+  if(!CfgLoadResult) { xErrMsg::printError(AppJPEG.getErrorLog() + "\n\n", xAppEnc::c_HelpString); return EXIT_FAILURE; }
   bool CfgReadResult = AppJPEG.readConfiguration();
-  if(!CfgReadResult) { xErrMsg::printError(AppJPEG.getErrorLog() + "\n\n", xAppJPEG::c_HelpString); return EXIT_FAILURE; }
+  if(!CfgReadResult) { xErrMsg::printError(AppJPEG.getErrorLog() + "\n\n", xAppEnc::c_HelpString); return EXIT_FAILURE; }
   const int32 VerboseLevel = AppJPEG.getVerboseLevel();
 
   if(VerboseLevel >= 2)
@@ -44,7 +44,8 @@ int32 APP_MAIN(int argc, char* argv[], char* /*envp*/[])
   }
 
   //print compile time setup
-  if (VerboseLevel >= 5) { fmt::print("{}\n", xMiscUtilsCORE::formatBuildInfo       ()); }
+  if (VerboseLevel >= 5) { fmt::print("{}\n", xMiscUtilsBASE::formatBuildInfo       ()); }
+  if (VerboseLevel >= 1) { fmt::print("{}\n", xMiscUtilsBASE::formatCompileTimeSetup()); }
   if (VerboseLevel >= 1) { fmt::print("{}\n", xMiscUtilsCORE::formatCompileTimeSetup()); }  
 
   //print config
@@ -72,7 +73,7 @@ int32 APP_MAIN(int argc, char* argv[], char* /*envp*/[])
   if(VerboseLevel >= 2) { fmt::print("Initializing:\n"); }
 
   eAppRes SeqRes = AppJPEG.setupSeqAndBuffs();
-  if(SeqRes == eAppRes::Error) { return EXIT_FAILURE; }
+  if(SeqRes == eAppRes::Error) { xErrMsg::printError("ERROR: setupSeqAndBuffs failed"); return EXIT_FAILURE; }
 
   AppJPEG.createProcessors();
 
@@ -80,22 +81,24 @@ int32 APP_MAIN(int argc, char* argv[], char* /*envp*/[])
   //running
   //===================================================================================================================
   tTimePoint PrcBeg = tClock::now();
-  eAppRes ClcRes = AppJPEG.processAllFrames();
-  if(ClcRes == eAppRes::Error) { return EXIT_FAILURE; }
+  eAppRes ClcRes = AppJPEG.encodeAllFrames();
+  if(ClcRes == eAppRes::Error) { xErrMsg::printError("ERROR: encodeAllFrames or analyzeAllFrames failed"); return EXIT_FAILURE; }
   tTimePoint PrcEnd = tClock::now();
 
   //===================================================================================================================
   //finalizing
   //===================================================================================================================
-  if(VerboseLevel >= 1) { fmt::print("{}\n", AppJPEG.calibrateTimeStamp()); }
-  fmt::print("\n\n");
-  AppJPEG.combineFrameStats  ();
+  if(VerboseLevel >= 1) { fmt::print("{}\n", AppJPEG.calibrateTimeStamp()); }  
+  AppJPEG.combineFrameStats();
+  std::string TimeStats = AppJPEG.formatResultsStdOut();
   AppJPEG.ceaseSeqAndBuffs   ();
+  AppJPEG.destroyProcessors  ();
   AppJPEG.ceaseMultithreading();
+  tTimePoint AppEnd = tClock::now();
 
   //printout results
-  fmt::print("{}\n", AppJPEG.formatResultsStdOut());
-  tTimePoint AppEnd = tClock::now();
+  fmt::print("\n\n");
+  fmt::print("{}\n", TimeStats);
   fmt::print("TotalProcessingTime  = {:.3f} s\n", std::chrono::duration_cast<tDurationS>(PrcEnd - PrcBeg).count());
   fmt::print("TotalApplicationTime = {:.3f} s\n", std::chrono::duration_cast<tDurationS>(AppEnd - AppBeg).count());
   fmt::print("END-OF-LOG\n");

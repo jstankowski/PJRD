@@ -87,12 +87,12 @@ public:
 class xQuantizer
 {
 protected:
-  uint16 m_QuantCoeffR[64];
+  PMBB_ALIGN_JPEG_BLK uint16 m_QuantCoeffR[64];
 
-  uint16 m_ReciprocalR[64];
-  uint16 m_CorrectionR[64];
-  uint16 m_ScaleR     [64];
-  uint16 m_ShiftR     [64];
+  PMBB_ALIGN_JPEG_BLK uint16 m_ReciprocalR[64];
+  PMBB_ALIGN_JPEG_BLK uint16 m_CorrectionR[64];
+  PMBB_ALIGN_JPEG_BLK uint16 m_ScaleR     [64];
+  PMBB_ALIGN_JPEG_BLK uint16 m_ShiftR     [64];
 
 public:
   void Init(eCmp Cmp, int32 Quality, eQTLa QuantTabLayout = eQTLa::Default);

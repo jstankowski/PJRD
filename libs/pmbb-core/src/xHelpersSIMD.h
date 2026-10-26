@@ -147,7 +147,7 @@ static inline int32 xHorVecSumI32_epi32(__m128i v)
   __m128i hi32  = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));    // Swap the low two elements
   __m128i sum32 = _mm_add_epi32(sum64, hi32);
   return _mm_cvtsi128_si32(sum32);       // movd
-  //alternative, probably slower
+  //alternative, slower
   //v = _mm_hadd_epi32(v, v);
   //v = _mm_hadd_epi32(v, v);
   //return _mm_extract_epi32(v, 0);

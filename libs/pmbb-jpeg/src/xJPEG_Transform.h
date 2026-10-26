@@ -82,22 +82,6 @@ public:
 
 //===============================================================================================================================================================================================================
 
-#if X_SIMD_CAN_USE_NEON
-#define X_CAN_USE_NEON 1
-class xTransformNEON
-{
-public:
-  //SSE direct multiplication with 8 bit transform coefficients, HEVC style full range 16 bit output
-  static void FwdTransformDCT_8x8_M16(int16*  restrict Dst, const uint16* Src);
-  static void InvTransformDCT_8x8_M16(uint16* restrict Dst, const  int16* Src);
-
-};
-#else //X_SIMD_CAN_USE_NEON
-#define X_CAN_USE_NEON 0
-#endif //X_SIMD_CAN_USE_NEON
-
-//===============================================================================================================================================================================================================
-
 class xTransform
 {
 public:

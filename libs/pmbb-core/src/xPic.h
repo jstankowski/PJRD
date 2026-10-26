@@ -4,10 +4,10 @@
 */
 
 #pragma once
-
 #include "xCommonDefCORE.h"
 #include "xPicCommon.h"
 #include "xVec.h"
+#include "xThreadPool.h"
 #include <mutex>
 
 namespace PMBB_NAMESPACE {
@@ -144,6 +144,9 @@ public:
   //convertion
   void rearrangeFromPlanar(const xPicP* Planar);
   void rearrangeToPlanar  (      xPicP* Planar);
+
+  void rearrangeFromPlanar(const xPicP* Planar, tThPI* TPI, bool ExecuteStoredTasks);
+  void rearrangeToPlanar  (      xPicP* Planar, tThPI* TPI, bool ExecuteStoredTasks);
 
   //interleaved access
   //inline int32   getStride() const { return m_Stride<<2; }

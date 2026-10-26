@@ -5,8 +5,23 @@
 
 #include "xMiscUtilsCORE.h"
 #include "xTimeUtils.h"
+#include <type_traits>
 
 namespace PMBB_NAMESPACE {
+
+//===============================================================================================================================================================================================================
+
+#if X_PMBB_CPP20
+#  define IS_CONSTEVAL std::is_constant_evaluated()
+#else //X_PMBB_CPP20
+#  if defined(__clang__) || defined(__GNUC__)
+#    define IS_CONSTEVAL __builtin_is_constant_evaluated()
+#  elif defined(_MSC_VER)
+#    define IS_CONSTEVAL __builtin_is_constant_evaluated()
+#  else
+#    define IS_CONSTEVAL false // Fallback if unsupported
+#  endif
+#endif //X_PMBB_CPP20
 
 //===============================================================================================================================================================================================================
 
@@ -28,22 +43,30 @@ public:
     int32 Len = End - Beg + 1;
     return Str.substr(Beg, Len);
   }
-  static constexpr uint32_t xHash(std::string_view str) //based on CRC32C
+  static constexpr uint32_t xHash(std::string_view Str) //based on CRC32C
   {
-    uint32_t CRC = 0xffffffff;
-    for(char C : str)
+    //if(IS_CONSTEVAL)
+    //{
+    //  std::string_view TmpStr = xStrip(Str);
+    //
+    //}
+    //else
     {
-      if(C != ' ' && C != '\t')
+      uint32_t CRC = 0xffffffff;
+      for(char C : Str)
       {
-        char c = (C >= 'A' && C <= 'Z') ? C + ('a' - 'A') : C;
-        CRC ^= c;
-        for(int32 j = 7; j >= 0; j--)
+        if(C != ' ' && C != '\t')
         {
-          CRC = (CRC >> 1) ^ ((CRC & 1) ? 0x82F63B78 : 0);
+          char c = (C >= 'A' && C <= 'Z') ? C + ('a' - 'A') : C;
+          CRC ^= c;
+          for(int32 j = 7; j >= 0; j--)
+          {
+            CRC = (CRC >> 1) ^ ((CRC & 1) ? 0x82F63B78 : 0);
+          }
         }
       }
+      return CRC ^ 0xffffffff;
     }
-    return CRC ^ 0xffffffff;
   }
 };
 
@@ -208,20 +231,13 @@ std::string xMiscUtilsCORE::formatCompileTimeSetup()
     Str += fmt::format("SIMD_CAN_USE_AVX       = {:d}\n", X_SIMD_CAN_USE_AVX   );
     Str += fmt::format("SIMD_CAN_USE_AVX512    = {:d}\n", X_SIMD_CAN_USE_AVX512);
 #endif
+#if defined(X_PMBB_ARCH_ARM64)
+    Str += fmt::format("SIMD_CAN_USE_NEON      = {:d}\n", X_SIMD_CAN_USE_NEON      );
+    Str += fmt::format("PMBB_CAN_USE_CRC32     = {:d}\n", X_PMBB_CAN_USE_ARM_CRC32 );
+    Str += fmt::format("PMBB_CAN_USE_CRYPTO    = {:d}\n", X_PMBB_CAN_USE_ARM_CRYPTO);
+#endif
   }
   Str += fmt::format("TSC_IMPLEMENTATION     = {}\n", X_IMPLEMENTATION_TSC);
-  return Str;
-}
-std::string xMiscUtilsCORE::formatBuildInfo()
-{
-  std::string Str;
-  Str += "Build and target configuration:\n";
-  Str += fmt::format("TARGET_OS_NAME   = {}\n", X_PMBB_OPERATING_SYSTEM_NAME);
-  Str += fmt::format("TARGET_ARCH_NAME = {}\n", X_PMBB_ARCH_NAME            );
-  Str += fmt::format("COMPILER_NAME    = {}\n", X_PMBB_COMPILER_NAME        );
-  Str += fmt::format("COMPILER_VERSION = {}\n", X_PMBB_COMPILER_VER         );
-  Str += fmt::format("CPP_VERSION      = {}\n", X_PMBB_CPUSPLUS_VER         );
-  Str += fmt::format("BUILD_TIME       = {} {}\n", __DATE__, __TIME__       );
   return Str;
 }
 

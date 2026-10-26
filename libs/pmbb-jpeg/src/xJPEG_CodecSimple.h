@@ -9,6 +9,7 @@
 #include "xPicYUV.h"
 #include "xJPEG_Quant.h"
 #include "xJPEG_EntropyHuffman.h"
+#include "xJPEG_EntropyArithm.h"
 
 namespace PMBB_NAMESPACE::JPEG {
 
@@ -56,12 +57,13 @@ protected:
 
 protected:
   std::vector < xEntropyHuffEncoderDefault> m_EntropyHuffEncs;
+  std::vector < xEntropyAritEncoder       > m_EntropyAritEncs;
 
 public: 
   void   create (xThreadPool* ThreadPool = nullptr) { xCreate (ThreadPool); }
   void   destroy(                                 ) { xDestroy(          ); }       
 
-  void   init   (int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval);
+  void   init   (int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval, eEntrTp EntropyType);
   void   setEmit(bool EmitAPP0, bool EmitQuantTabs, bool EmitEntropy);
   void   encode (const xPicYUV* InputPicture, xByteBuffer* OutputBuffer);
 
@@ -79,12 +81,13 @@ class xDecoderSimple : public xCodecSimple
 protected:
   xHuffDecoderBank m_HuffDecoderBank;
   std::vector<xEntropyHuffDecoder> m_EntropyHuffDecs;
+  std::vector<xEntropyAritDecoder> m_EntropyAritDecs;
 
 public: 
   void   create (xThreadPool* ThreadPool = nullptr) { xCreate (ThreadPool); }
   void   destroy(                                 ) { xDestroy(          ); }   
 
-  void   init   (int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval);
+  void   init   (int32V2 PictureSize, eCrF ChromaFormat, int32 Quality, int32 RestartInterval, eEntrTp EntropyType);
   bool   init   (xByteBuffer* InputBuffer);
   void   decode (xByteBuffer* InputBuffer, xPicYUV* OutputPicture); //assumes same parameters as previous valid one - does not parse headers
   

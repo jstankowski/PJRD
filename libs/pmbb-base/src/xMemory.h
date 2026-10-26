@@ -56,6 +56,9 @@ public:
 #if defined(X_PMBB_COMPILER_MSVC)
   static inline void* xAlignedMalloc(uintSize Size, uintSize Alignment) { return _aligned_malloc(Size, Alignment); }
   static inline void  xAlignedFree  (void* Memmory) { _aligned_free(Memmory); }
+#elif defined (__ANDROID__)
+  static inline void* xAlignedMalloc(uintSize Size, uintSize Alignment) { void* Ptr = nullptr; posix_memalign(&Ptr, Alignment, Size); return Ptr; }
+  static inline void  xAlignedFree(void* Memmory) { free(Memmory); }
 #else
   static inline void* xAlignedMalloc(uintSize Size, uintSize Alignment) { return aligned_alloc(Alignment, Size); }
   static inline void  xAlignedFree  (void* Memmory) { free(Memmory); }
@@ -77,6 +80,8 @@ public:
   
   static inline uint64 getBestEffortSizePageBase    () { return c_MemSizePageBase     ? c_MemSizePageBase     : xc_MemSizePageDef    ; }
   static inline uint64 getBestEffortLog2SizePageBase() { return c_Log2MemSizePageBase ? c_Log2MemSizePageBase : xc_Log2MemSizePageDef; }
+
+  static inline uint64 RoundUpToPageSizeBase(uint64 Value) { return xRoundUpToNearestMultiple(Value, getBestEffortLog2SizePageBase()); }
 
 protected:
   static uint64 xCvtSize(int64 Size) { return Size != NOT_VALID ? Size : 0; }

@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2020-2024 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2020-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 #include "xCommonDefJPEG.h"
@@ -53,22 +53,54 @@ std::string xCalkMdToStr(eCalkMd CalkMd)
   default: return "INVALID";
   }
 }
+eEntrTp xStrToEntrTp(const std::string& EntrTp)
+{
+  std::string EntrTpL = xString::toLower(EntrTp);
+  return EntrTpL == "huffman"    ? eEntrTp::Huffman    :
+         EntrTpL == "arithmetic" ? eEntrTp::Arithmetic :
+                                   eEntrTp::INVALID    ;
+}
+std::string xEntrTpToStr(eEntrTp EntrTp)
+{
+  switch(EntrTp)
+  {
+    case eEntrTp::Huffman   : return "Huffman"   ;
+    case eEntrTp::Arithmetic: return "Arithmetic";
+    default                 : return "INVALID"   ;
+  }
+}
 eLmbd xStrToLmbd(const std::string& Lmbd)
 {
-    std::string LmbdL = xString::toLower(Lmbd);
-  return LmbdL == "exhaustive"  ? eLmbd::Exhaustive  :
+  std::string LmbdL = xString::toLower(Lmbd);
+  return LmbdL == "exhaustive3" ? eLmbd::Exhaustive3 :
+         LmbdL == "exhaustive5" ? eLmbd::Exhaustive5 :
          LmbdL == "approxexact" ? eLmbd::ApproxExact :
          LmbdL == "approxfast"  ? eLmbd::ApproxFast  :
-                                  eLmbd::INVALID    ;
+                                  eLmbd::INVALID     ;
 }
 std::string xLmbdToStr(eLmbd Lmbd)
 {
   switch(Lmbd)
   {
-  case eLmbd::Exhaustive : return "Exhaustive" ; 
-  case eLmbd::ApproxExact: return "ApproxExact";
-  case eLmbd::ApproxFast : return "ApproxFast" ;
+  case eLmbd::Exhaustive3 : return "Exhaustive3"; 
+  case eLmbd::Exhaustive5 : return "Exhaustive5"; 
+  case eLmbd::ApproxExact : return "ApproxExact";
+  case eLmbd::ApproxFast  : return "ApproxFast" ;
   default: return "INVALID";
+  }
+}
+eQntOpt xStrToQntOpt(const std::string& QntOpt)
+{
+  std::string QntOptL = xString::toLower(QntOpt);
+  return QntOptL == "greedy"    ? eQntOpt::Greedy    :
+                                  eQntOpt::INVALID   ;
+}
+std::string xQntOptToStr(eQntOpt QntOpt)
+{
+  switch(QntOpt)
+  {
+  case eQntOpt::Greedy    : return "Greedy"    ;
+  default                 : return "INVALID"   ;
   }
 }
 

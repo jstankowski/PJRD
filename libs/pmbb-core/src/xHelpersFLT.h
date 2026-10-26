@@ -15,40 +15,48 @@ namespace PMBB_NAMESPACE {
 //===============================================================================================================================================================================================================
 #if X_SIMD_HAS_AVX512
 static inline uint32 xNearbyF32ToU32(flt32 Flt) { return _mm_cvtss_u32(_mm_set_ss(Flt)); }
-static inline uint32 xNearbyF64ToU32(flt64 Flt) { return _mm_cvtsd_u32(_mm_set_sd(Flt)); }
 static inline int32  xNearbyF32ToI32(flt32 Flt) { return _mm_cvtss_i32(_mm_set_ss(Flt)); }
+static inline uint32 xNearbyF64ToU32(flt64 Flt) { return _mm_cvtsd_u32(_mm_set_sd(Flt)); }
 static inline int32  xNearbyF64ToI32(flt64 Flt) { return _mm_cvtsd_i32(_mm_set_sd(Flt)); }
+static inline uint64 xNearbyF64ToU64(flt64 Flt) { return _mm_cvtsd_u64(_mm_set_sd(Flt)); }
+static inline int64  xNearbyF64ToI64(flt64 Flt) { return _mm_cvtsd_i64(_mm_set_sd(Flt)); }
 static inline uint32 xRoundF32ToU32 (flt32 Flt) { return _mm_cvttss_u32(_mm_add_ss(_mm_set_ss(Flt), _mm_set_ss(0.5f))); }
-static inline uint32 xRoundF64ToU32 (flt64 Flt) { return _mm_cvttsd_u32(_mm_add_sd(_mm_set_sd(Flt), _mm_set_sd(0.5f))); }
 static inline int32  xRoundF32ToI32 (flt32 Flt) { __m128  FltSS = _mm_set_ss(Flt); return _mm_cvttss_i32(_mm_add_ss(FltSS, _mm_or_ps(_mm_set_ss(0.5f), _mm_and_ps(FltSS, _mm_set_ss(-0.0f))))); }
+static inline uint32 xRoundF64ToU32 (flt64 Flt) { return _mm_cvttsd_u32(_mm_add_sd(_mm_set_sd(Flt), _mm_set_sd(0.5f))); }
 static inline int32  xRoundF64ToI32 (flt64 Flt) { __m128d FltSS = _mm_set_sd(Flt); return _mm_cvttsd_i32(_mm_add_sd(FltSS, _mm_or_pd(_mm_set_sd(0.5f), _mm_and_pd(FltSS, _mm_set_sd(-0.0f))))); }
 #elif X_PMBB_ARCH_AMD64
 static inline uint32 xNearbyF32ToU32(flt32 Flt) { return (uint32)_mm_cvtss_si32(_mm_set_ss(Flt)); }
-static inline uint32 xNearbyF64ToU32(flt64 Flt) { return (uint32)_mm_cvtsd_si32(_mm_set_sd(Flt)); }
 static inline int32  xNearbyF32ToI32(flt32 Flt) { return _mm_cvtss_si32(_mm_set_ss(Flt)); }
+static inline uint32 xNearbyF64ToU32(flt64 Flt) { return (uint32)_mm_cvtsd_si32(_mm_set_sd(Flt)); }
 static inline int32  xNearbyF64ToI32(flt64 Flt) { return _mm_cvtsd_si32(_mm_set_sd(Flt)); }
+static inline uint64 xNearbyF64ToU64(flt64 Flt) { return (uint64)_mm_cvtsd_si64(_mm_set_sd(Flt)); }
+static inline int64  xNearbyF64ToI64(flt64 Flt) { return _mm_cvtsd_si64(_mm_set_sd(Flt)); }
 static inline uint32 xRoundF32ToU32 (flt32 Flt) { return (uint32)_mm_cvttss_si32(_mm_add_ss(_mm_set_ss(Flt), _mm_set_ss(0.5f))); }
-static inline uint32 xRoundF64ToU32 (flt64 Flt) { return (uint32)_mm_cvttsd_si32(_mm_add_sd(_mm_set_sd(Flt), _mm_set_sd(0.5f))); }
 static inline int32  xRoundF32ToI32 (flt32 Flt) { __m128  FltSS = _mm_set_ss(Flt); return _mm_cvttss_si32(_mm_add_ss(FltSS, _mm_or_ps(_mm_set_ss(0.5f), _mm_and_ps(FltSS, _mm_set_ss(-0.0f))))); }
+static inline uint32 xRoundF64ToU32 (flt64 Flt) { return (uint32)_mm_cvttsd_si32(_mm_add_sd(_mm_set_sd(Flt), _mm_set_sd(0.5f))); }
 static inline int32  xRoundF64ToI32 (flt64 Flt) { __m128d FltSS = _mm_set_sd(Flt); return _mm_cvttsd_si32(_mm_add_sd(FltSS, _mm_or_pd(_mm_set_sd(0.5f), _mm_and_pd(FltSS, _mm_set_sd(-0.0f))))); }
 #elif X_PMBB_ARCH_ARM64
 static inline uint32 xNearbyF32ToU32(flt32 Flt) { return vcvtns_u32_f32(Flt); }
-static inline uint32 xNearbyF64ToU32(flt64 Flt) { return vcvtnd_u64_f64(Flt); }
 static inline int32  xNearbyF32ToI32(flt32 Flt) { return vcvtns_s32_f32(Flt); }
+static inline uint32 xNearbyF64ToU32(flt64 Flt) { return vcvtnd_u64_f64(Flt); }
 static inline int32  xNearbyF64ToI32(flt64 Flt) { return vcvtnd_s64_f64(Flt); }
+static inline uint64 xNearbyF64ToU64(flt64 Flt) { return vcvtnd_u64_f64(Flt); }
+static inline int64  xNearbyF64ToI64(flt64 Flt) { return vcvtnd_s64_f64(Flt); }
 static inline uint32 xRoundF32ToU32 (flt32 Flt) { return vcvtas_u32_f32(Flt); }
-static inline uint32 xRoundF64ToU32 (flt64 Flt) { return vcvtad_u64_f64(Flt); }
 static inline int32  xRoundF32ToI32 (flt32 Flt) { return vcvtas_s32_f32(Flt); }
+static inline uint32 xRoundF64ToU32 (flt64 Flt) { return vcvtad_u64_f64(Flt); }
 static inline int32  xRoundF64ToI32 (flt64 Flt) { return vcvtad_s64_f64(Flt); }
 #else  
-static inline uint32 xNearbyF32ToU32(flt32 Flt) { return (uint32)(std::nearbyint(Flt)); }
-static inline uint32 xNearbyF64ToU32(flt64 Flt) { return (uint32)(std::nearbyint(Flt)); }
-static inline int32  xNearbyF32ToI32(flt32 Flt) { return ( int32)(std::nearbyint(Flt)); }
-static inline int32  xNearbyF64ToI32(flt64 Flt) { return ( int32)(std::nearbyint(Flt)); }
-static inline uint32 xRoundF32ToU32 (flt32 Flt) { return (uint32)(std::round    (Flt)); }
-static inline uint32 xRoundF64ToU32 (flt64 Flt) { return (uint32)(std::round    (Flt)); }
-static inline int32  xRoundF32ToI32 (flt32 Flt) { return ( int32)(std::round    (Flt)); }
-static inline int32  xRoundF64ToI32 (flt64 Flt) { return ( int32)(std::round    (Flt)); }
+static inline uint32 xNearbyF32ToU32(flt32 Flt) { return (uint32)(std::nearbyintf(Flt)); }
+static inline int32  xNearbyF32ToI32(flt32 Flt) { return ( int32)(std::nearbyintf(Flt)); }
+static inline uint32 xNearbyF64ToU32(flt64 Flt) { return (uint32)(std::nearbyintf(Flt)); }
+static inline int32  xNearbyF64ToI32(flt64 Flt) { return ( int32)(std::nearbyintf(Flt)); }
+static inline uint64 xNearbyF64ToU64(flt64 Flt) { return (uint64)(std::nearbyint (Flt)); }
+static inline int64  xNearbyF64ToI64(flt64 Flt) { return ( int64)(std::nearbyint (Flt)); }
+static inline uint32 xRoundF32ToU32 (flt32 Flt) { return (uint32)(std::round     (Flt)); }
+static inline int32  xRoundF32ToI32 (flt32 Flt) { return ( int32)(std::round     (Flt)); }
+static inline uint32 xRoundF64ToU32 (flt64 Flt) { return (uint32)(std::round     (Flt)); }
+static inline int32  xRoundF64ToI32 (flt64 Flt) { return ( int32)(std::round     (Flt)); }
 #endif
 template <class XXX> static inline int32 xNearbyFltToI32(XXX Flt);
 template <> inline int32 xNearbyFltToI32(flt32 Flt) { return xNearbyF32ToI32(Flt); }

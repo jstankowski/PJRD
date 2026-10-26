@@ -250,14 +250,14 @@ void xJFIF::xHuffTable::InitCustom(uint8 Idx, tClass Class, const uint8* LengthT
   m_CodeSymbols.clear();
 
   const int32 MaxSymbol = getMaxNumCodeSymbols();
-  std::array<byte, 32> TmpHuffLen = { 0 };
+  std::array<uint8, 32> TmpHuffLen = { 0 };
   for(int32 i = 0; i <= MaxSymbol; i++)
   {
-    int32 length = LengthTable[i];
+    int32 Length = LengthTable[i];
 
-    if(length > 0 && length <= MaxSymbol)
+    if(Length > 0 && Length <= MaxSymbol)
     {
-      TmpHuffLen[length - 1]++;
+      TmpHuffLen[Length - 1]++;
     }
   }
 
@@ -323,6 +323,92 @@ std::vector<xJFIF::xHuffTable> xJFIF::xHuffTable::createDefaultHuffTables()
   HTs[2].InitDefault(1, xJFIF::xHuffTable::tClass::DC, eCmp::CB); //any chroma so use CB
   HTs[3].InitDefault(1, xJFIF::xHuffTable::tClass::AC, eCmp::CB);
   return HTs;
+}
+
+//=============================================================================================================================================================================
+// DAC
+//=============================================================================================================================================================================
+int32 xJFIF::xArithCond::Absorb(xByteBuffer* Input)
+{
+  uint8 TabInfo = xRead8(Input );
+  m_Class = (tClass)((TabInfo & 0xF0) >> 4);
+  m_Idx   = TabInfo & 0x0F;
+  uint8 Cs      = xRead8(Input);
+  if(isDC())
+  {
+    m_U  = (Cs & 0xF0) >> 4;
+    m_L  = Cs & 0x0F;
+    m_Kx = 0xFF;
+  }
+  else
+  {
+    m_L  = 0xFF;
+    m_U  = 0xFF;
+    m_Kx = Cs  ;
+  }
+  return 2;
+}
+int32 xJFIF::xArithCond::Emit(xByteBuffer* Output) const
+{
+  xWrite8(Output, ((uint8)m_Class<<4) + m_Idx);
+  uint8 Cs = isDC() ? (m_U << 4) + m_L : m_Kx;
+  xWrite8(Output, Cs);
+  return 2;
+}
+void xJFIF::xArithCond::InitDefault(uint8 Idx, tClass Class)
+{
+  m_Class = Class;
+  m_Idx   = Idx;
+
+  if(Class == tClass::DC)
+  {
+    m_U  = xJPEG_Constants::c_DefaultU;
+    m_L  = xJPEG_Constants::c_DefaultL;
+    m_Kx = 0xFF;
+
+  }
+  else if(Class == tClass::AC)
+  {
+    m_U  = 0xFF;
+    m_L  = 0xFF;
+    m_Kx = xJPEG_Constants::c_DefaultKx;
+  }
+}
+void xJFIF::xArithCond::InitCustom(uint8 Idx, tClass Class, int32 U, int32 L, int32 Kx)
+{
+  m_Class = Class;
+  m_Idx   = Idx;
+
+  if(Class == tClass::DC)
+  {
+    m_U  = (uint8)U;
+    m_L  = (uint8)L;
+    m_Kx = 0xFF;
+
+  }
+  else if(Class == tClass::AC)
+  {
+    m_U  = 0xFF;
+    m_L  = 0xFF;
+    m_Kx = (uint8)Kx;
+  }
+}
+std::vector<xJFIF::xArithCond> xJFIF::xArithCond::createDefaultArithCond(bool CommonChroma)
+{
+  std::vector<xJFIF::xArithCond> ACs;
+  const int32 NumEntries = CommonChroma ? 4 : 6;
+  ACs.resize(NumEntries);
+  ACs[0].InitDefault(0, xArithCond::tClass::DC);
+  ACs[1].InitDefault(0, xArithCond::tClass::AC);
+  ACs[2].InitDefault(1, xArithCond::tClass::DC);
+  ACs[3].InitDefault(1, xArithCond::tClass::AC);
+  if(!CommonChroma)
+  {
+    ACs[4].InitDefault(2, xArithCond::tClass::DC);
+    ACs[5].InitDefault(2, xArithCond::tClass::AC);
+  }
+  
+  return ACs;
 }
 
 //=============================================================================================================================================================================
@@ -529,6 +615,32 @@ void xJFIF::WriteDefaultDHT(xByteBuffer* Output)
   xWrite8(Output, (1<<4) + 1);
   xWriteMemmory(Output, xJPEG_Constants::m_CodeLengthChromaAC, 16);
   xWriteMemmory(Output, xJPEG_Constants::m_CodeSymbolChromaAC, sizeof(xJPEG_Constants::m_CodeSymbolChromaAC));
+}
+bool xJFIF::ReadDAC(xByteBuffer* Input, std::vector<xArithCond>& ArithConds)
+{
+  if(xPeekMarker(Input) != eMarker::DAC) { return false; }
+
+  [[maybe_unused]]eMarker Marker        = xReadMarker(Input); //Marker
+  int32                   SegmentLength = xRead16    (Input); //Length
+
+  int32 RemainingBytes = SegmentLength - 2;
+  while(RemainingBytes > 0)
+  {
+    xArithCond ArithCond;
+    int32 NumBytes = ArithCond.Absorb(Input);
+    ArithConds.push_back(std::move(ArithCond));
+    RemainingBytes -= NumBytes;
+  }
+  return true;
+}
+void xJFIF::WriteDAC(xByteBuffer* Output, const std::vector<xArithCond>& ArithConds)
+{
+  int32 SegmentLength = 2;
+  for(const xArithCond& ArithCond : ArithConds) { SegmentLength += ArithCond.getLength(); }
+
+  xWriteMarker(Output, eMarker::DAC         );
+  xWrite16    (Output, (uint16)SegmentLength); //length
+  for(const xArithCond& ArithCond : ArithConds) { ArithCond.Emit(Output); }
 }
 bool xJFIF::ReadSOS(xByteBuffer* Input, xSOS& SOS)
 {

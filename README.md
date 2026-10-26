@@ -30,12 +30,13 @@ PJRD is distributed as both a **C++ library** for seamless integration into larg
 * Krzysztof Klimaszewski - Poznan University of Technology, Poznań, Poland
 * Tomasz Grajek          - Poznan University of Technology, Poznań, Poland
 * Adam Grzelka           - Poznan University of Technology, Poznań, Poland
+* Damian Karwowski       - Poznan University of Technology, Poznań, Poland
 
-### 2.1. Credits
+Credits - PUT students and graduates who contributed to this project:
 
-* Artur Fojut      - Poznan University of Technology, Poznań, Poland
-* Adrian Śliwiński - Poznan University of Technology, Poznań, Poland
-* Kacper Winiecki  - Poznan University of Technology, Poznań, Poland
+* Artur Fojut (Huffman tables optimization - HTO)
+* Adrian Śliwiński (prototyping of parallel implementation)
+* Kacper Winiecki (fast calculation of Lambda parameter)
 
 ## 3. License
 
@@ -153,6 +154,7 @@ PictureFormat, PictureType, BitDepth and ChromaFormat are not necessary for PNG/
 |-q   | Quality          | JPEG Quality (Q, 0-100, 0=lowest quality, 100=highest quality) |
 |-qtl | QuantTabLayout   | Select quantization table layout used during encoding: [Default, Flat, SemiFlat] (default Default) [optional] Default is based on RFC2435. |
 |-ri  | RestartInterval  | Restart interval in number of MCUs (optional, default 0)  [0=disabled, -1=MCU row] |
+|-ent | EntropyEncoder   | Entropy encoder (optional, default=Huffman) [Huffman, Arithmetic] |
 
 #### JPEG specific parameters
 
@@ -160,10 +162,10 @@ PictureFormat, PictureType, BitDepth and ChromaFormat are not necessary for PNG/
 |:----|:------------------|:------------|
 | -oqc| OptQuantCoeffs    | Enable RDOQ (optional, default 1) |
 | -pzc| ProcessZeroCoeffs | Try optimize coeffs initially quantized to 0 (optional, default 0) |
-| -oet| OptEntropyTables  | Calculate optimized Huffman tables (optional, default 1) |
+| -oet| OptEntropyTables  | Calculate optimized Huffman tables (optional, default 1 for Huff, 0 for Arith) |
 | -npb| NumOptPassesBlock | Number of optimization passes over one block   (optional, default 1) |
 | -npp| NumOptPassesPic   | Number of optimization passes over one picture (optional, default 1) |
-| -lem| LambdaEstMode     | Lambda estimation mode (optional, default ApproxExact) [Exhaustive, ApproxExact, ApproxFast] |
+| -lem| LambdaEstMode     | Lambda estimation mode (optional, default Exhaustive3) [Exhaustive5, Exhaustive3, ApproxExact, ApproxFast] |
 | -dcm| DistCalkMode      | Distortion calculation mode (optional, default Exact) [Exact = calculates full reconstruction, Approx = estimates SSD based on DCT coefficients] |
 
 #### Validation parameters

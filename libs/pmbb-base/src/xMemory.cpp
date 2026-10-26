@@ -27,6 +27,11 @@
   #include <dirent.h>
 #endif //X_PMBB_OPERATING_SYSTEM_LINUX
 
+#ifdef X_PMBB_OPERATING_SYSTEM_DARWIN
+  #include <sys/types.h>
+  #include <sys/sysctl.h>
+#endif //X_PMBB_OPERATING_SYSTEM_DARWIN
+
 
 //=============================================================================================================================================================================
 // Helper functions - memory
@@ -70,9 +75,29 @@ int32_t xDetectCacheLineSize()
     fclose(File);
     if(Result != 1) { return 0; }
   }
+#  if defined(X_PMBB_ARCH_ARM64)
+  else
+  {
+    uint64_t CTR_EL0 = 0;
+    asm volatile ("mrs %0, ctr_el0;" : "=r"(CTR_EL0) :: "memory");
+    uint64_t CTR_DminLine = (CTR_EL0 >> 16) & 0xF;
+    LineSize = (int32_t)(4 << CTR_DminLine);
+  }
+#  endif //defined(X_PMBB_ARCH_ARM64)
+
   CacheLineSize = LineSize;
 
-#endif //X_PMBB_OPERATING_SYSTEM_LINUX
+#elif defined(X_PMBB_OPERATING_SYSTEM_DARWIN)
+
+  int64_t Ret = 0;
+  size_t  Size = sizeof(Ret);
+
+  if(sysctlbyname("hw.cachelinesize", &Ret, &Size, NULL, 0) == 0)
+  {
+    CacheLineSize = (int32_t)Ret;
+  }
+
+#endif //X_PMBB_OPERATING_SYSTEM
 
   return CacheLineSize;
 }
@@ -91,6 +116,16 @@ int64_t xDetectMemoryBasePageSize()
 
   PageSize = sysconf(_SC_PAGE_SIZE);
 
+#elif defined(X_PMBB_OPERATING_SYSTEM_DARWIN)
+
+  int64_t Ret = 0;
+  size_t  Size = sizeof(Ret);
+
+  if(sysctlbyname("hw.pagesize", &Ret, &Size, NULL, 0) == 0)
+  {
+    PageSize = Ret;
+  }
+
 #endif //X_PMBB_OPERATING_SYSTEM_LINUX
 
   return PageSize;
@@ -104,11 +139,12 @@ int64_t xDetectMemoryHugePageSize()
   int64_t PageSizeBase = xDetectMemoryBasePageSize();
   if(PageSizeBase == NOT_VALID) { return NOT_VALID;}
 
+  int64_t PageSizeHuge = NOT_VALID;
+
 #if defined(X_PMBB_OPERATING_SYSTEM_WINDOWS)
 
   size_t  LargePageMinimum = (int64_t)GetLargePageMinimum();
-  int64_t PageSizeHuge = LargePageMinimum !=0 ? (int64_t)LargePageMinimum : NOT_VALID;
-  return PageSizeHuge;
+  PageSizeHuge = LargePageMinimum !=0 ? (int64_t)LargePageMinimum : NOT_VALID;
  
 #elif defined(X_PMBB_OPERATING_SYSTEM_LINUX)
 
@@ -132,24 +168,26 @@ int64_t xDetectMemoryHugePageSize()
   std::vector<int64_t> KnownPageSizes;  
   //search for all available page sizes
   DIR* dirp = opendir("/sys/kernel/mm/hugepages");
-  for(;; )
+  if(dirp != nullptr)
   {
-    struct dirent* dirent = readdir(dirp);
-    if(NULL == dirent) break;
+    for(;; )
+    {
+      struct dirent* dirent = readdir(dirp);
+      if(NULL == dirent) break;
 
-    if('.' == dirent->d_name[0]) continue;
-    char* p = strchr(dirent->d_name, '-');
-    if(NULL == p) continue;
+      if('.' == dirent->d_name[0]) continue;
+      char* p = strchr(dirent->d_name, '-');
+      if(NULL == p) continue;
 
-    uint64_t CurrPageSize = 1024ULL * strtoull(p + 1, NULL, 0);
-    KnownPageSizes.push_back((int64_t)CurrPageSize);
-    //MinPageSize = std::min(MinPageSize, CurrPageSize);
+      uint64_t CurrPageSize = 1024ULL * strtoull(p + 1, NULL, 0);
+      KnownPageSizes.push_back((int64_t)CurrPageSize);
+      //MinPageSize = std::min(MinPageSize, CurrPageSize);
+    }
+    closedir(dirp);
   }
-  closedir(dirp);
 
   if(KnownPageSizes.empty()) { return NOT_VALID;}
    
-  int64_t PageSizeHuge = NOT_VALID;
   if(ExpectedPageSizes.empty())
   {
     PageSizeHuge = KnownPageSizes[0];
@@ -166,8 +204,9 @@ int64_t xDetectMemoryHugePageSize()
     }
   }
 
+#endif //X_PMBB_OPERATING_SYSTEM
+
   return PageSizeHuge;
-#endif //X_PMBB_OPERATING_SYSTEM_LINUX
 }
 
 } //end of namespace

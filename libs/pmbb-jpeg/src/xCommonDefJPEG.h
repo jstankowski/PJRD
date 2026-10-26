@@ -51,15 +51,33 @@ enum class eCalkMd // calculation mode
 eCalkMd     xStrToCalkMd(const std::string& CalkMd);
 std::string xCalkMdToStr(eCalkMd CalkMd);
 
+enum class eEntrTp //entropy type
+{
+  INVALID    = NOT_VALID,
+  Huffman    = 0,
+  Arithmetic = 1,
+};
+eEntrTp     xStrToEntrTp(const std::string& EntrTp);
+std::string xEntrTpToStr(eEntrTp EntrTp);
+
 enum class eLmbd //lambda estimation mode
 {
   INVALID     = NOT_VALID,
-  Exhaustive  = 0,
-  ApproxExact = 1,
-  ApproxFast  = 2,
+  Exhaustive3 = 0,
+  Exhaustive5 = 1,
+  ApproxExact = 2,
+  ApproxFast  = 3,
 };
 eLmbd       xStrToLmbd(const std::string& Lmbd);
 std::string xLmbdToStr(eLmbd Lmbd);
+
+enum class eQntOpt
+{
+  INVALID       = NOT_VALID,
+  Greedy        = 0,
+};
+eQntOpt     xStrToQntOpt(const std::string& QntOpt);
+std::string xQntOptToStr(eQntOpt QntOpt);
 
 //=============================================================================================================================================================================
 

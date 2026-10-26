@@ -13,29 +13,72 @@ namespace PMBB_NAMESPACE {
 //===============================================================================================================================================================================================================
 xByteBuffer::xByteBuffer()
 {
+  m_Buffer     = nullptr  ;
   m_BufferSize = NOT_VALID;
   m_DataSize   = NOT_VALID;
-  m_DataOffset = NOT_VALID;
-  m_OwnsBuffer = false;
-  m_Buffer     = nullptr;  
-  m_POC        = NOT_VALID;
-  m_Timestamp  = NOT_VALID;
+  m_DataOffset = NOT_VALID;  
+  m_EightCC    = 0        ;
+  m_POC        = std::numeric_limits<int64>::min();
+  m_Timestamp  = std::numeric_limits<int64>::min();
+}
+xByteBuffer::xByteBuffer(xByteBuffer&& Src) noexcept
+  : m_Buffer    (std::exchange(Src.m_Buffer    , nullptr                          ))
+  , m_BufferSize(std::exchange(Src.m_BufferSize, NOT_VALID                        ))
+  , m_DataSize  (std::exchange(Src.m_DataSize  , NOT_VALID                        ))
+  , m_DataOffset(std::exchange(Src.m_DataOffset, NOT_VALID                        ))
+  , m_EightCC   (std::exchange(Src.m_EightCC   , 0                                ))
+  , m_POC       (std::exchange(Src.m_POC       , std::numeric_limits<int64>::min()))
+  , m_Timestamp (std::exchange(Src.m_Timestamp , std::numeric_limits<int64>::min()))  
+{}
+xByteBuffer& xByteBuffer::operator=(xByteBuffer&& Src) noexcept
+{
+  if (this == &Src) { return *this; }
+  m_Buffer     = std::exchange(Src.m_Buffer    , nullptr                          );
+  m_BufferSize = std::exchange(Src.m_BufferSize, NOT_VALID                        );
+  m_DataSize   = std::exchange(Src.m_DataSize  , NOT_VALID                        );
+  m_DataOffset = std::exchange(Src.m_DataOffset, NOT_VALID                        );
+  m_EightCC    = std::exchange(Src.m_EightCC   , 0                                );
+  m_POC        = std::exchange(Src.m_POC       , std::numeric_limits<int64>::min());
+  m_Timestamp  = std::exchange(Src.m_Timestamp , std::numeric_limits<int64>::min());    
+  return *this;
 }
 void xByteBuffer::create(int32 BufferSize)
-{ 
-  m_BufferSize = BufferSize;
+{
+  //align buffer to page boundary and make it size a multiple of page size - makes operating system memory mangement easier (and faster)
+  int32 EffectiveBufferSize = (int32)xMemory::RoundUpToPageSizeBase(BufferSize);
+  m_BufferSize = EffectiveBufferSize;
   m_DataSize   = 0;
   m_DataOffset = 0;
-  m_OwnsBuffer = true;
-  m_Buffer     = (byte*)xMemory::xAlignedMallocPageAuto(m_BufferSize);
+  m_Buffer     = (byte*)xMemory::xAlignedMallocPageAuto(EffectiveBufferSize);
 }
 void xByteBuffer::destroy()
 {
   m_BufferSize = NOT_VALID;
   m_DataSize   = NOT_VALID;
   m_DataOffset = NOT_VALID;
-  if(m_Buffer != nullptr && m_OwnsBuffer) { xMemory::xAlignedFree(m_Buffer); }
-  m_Buffer     = nullptr;
+  if(m_Buffer != nullptr) { xMemory::xAlignedFreeNull(m_Buffer); }  
+}
+void xByteBuffer::resize(int32_t NewBufferSize)
+{
+  if(m_Buffer == nullptr) { create(NewBufferSize); return; }
+
+  int32 EffectiveBufferSize = (int32)xMemory::RoundUpToPageSizeBase(NewBufferSize);
+  if(EffectiveBufferSize != m_BufferSize)
+  {
+    byte* NewBuffer = (byte*)xMemory::xAlignedMallocPageAuto(EffectiveBufferSize);
+    if(m_DataSize)
+    {
+      size_t CopySize = std::min(m_BufferSize, NewBufferSize);
+      memcpy(NewBuffer, m_Buffer, CopySize);
+    }
+    xMemory::xAlignedFree(m_Buffer);
+    m_Buffer = NewBuffer;
+  }
+  m_BufferSize = NewBufferSize;
+  if(m_DataOffset + m_DataSize > m_BufferSize)
+  {
+    clear();
+  }
 }
 void xByteBuffer::copy(const xByteBuffer* Src)
 {
@@ -50,6 +93,15 @@ void xByteBuffer::copy(byte* Memmory, int32 Size)
   m_DataSize   = Size;
   m_DataOffset = 0;
   std::memcpy(m_Buffer, Memmory, Size);
+}
+void xByteBuffer::ensureRemainSize(int32 RequiredNumBytes)
+{
+  const int32 RemainingSize = getRemainSize();
+  if(RemainingSize < RequiredNumBytes)
+  {
+    if(!isAligned() && ((RemainingSize + m_DataOffset) >= RequiredNumBytes)) { align(); }
+    else { resize(m_BufferSize + RequiredNumBytes); }
+  }
 }
 bool xByteBuffer::peekBytes(byte* Dst, int32 Size) const
 {
@@ -67,20 +119,20 @@ bool xByteBuffer::extractBytes(byte* Dst, int32 Size)
 }
 bool xByteBuffer::disposeBytes(const byte* Src, int32 Size)
 {
-  if(getRemainingSize() < Size) { return false; }
+  if(getRemainSize() < Size) { return false; }
   std::memcpy(m_Buffer + m_DataOffset + m_DataSize, Src, Size);
   return true;
 }
 bool xByteBuffer::appendBytes(const byte* Src, int32 Size)
 {
-  if(getRemainingSize() < Size) { return false; }
+  if(getRemainSize() < Size) { return false; }
   std::memcpy(m_Buffer + m_DataOffset + m_DataSize, Src, Size);
   m_DataSize += Size;
   return true;
 }
 bool xByteBuffer::transfer(xByteBuffer* Src, int32 Size)
 {
-  if((this->getRemainingSize() < Size) || Src->getDataSize() < Size) { return false; }
+  if((this->getRemainSize() < Size) || Src->getDataSize() < Size) { return false; }
   std::memcpy(this->getWritePtr(), Src->getReadPtr(), Size);
   this->modifyWritten(Size);
   Src ->modifyRead(Size);

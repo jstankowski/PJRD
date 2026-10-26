@@ -12,8 +12,9 @@ namespace PMBB_NAMESPACE {
 void xTimeStamp::calibrateTimeStamp()
 {
   tDuration TotalProcTime  = m_ProcEndTime  - m_ProcBegTime ;
-  uint64    TotalProcTicks = m_ProcEndTicks - m_ProcBegTicks;
-  flt64     TicksPerSec    = (flt64)TotalProcTicks / (flt64)std::chrono::duration_cast<tDurationS>(TotalProcTime).count();
+  flt64     TotalProcSec   = (flt64)(std::chrono::duration_cast<tDurationS>(TotalProcTime).count());
+  uint64    TotalProcTicks = m_ProcEndTicks - m_ProcBegTicks;  
+  flt64     TicksPerSec    = (flt64)TotalProcTicks / (flt64)TotalProcSec;
 
   setupCalibration(TicksPerSec);
 }

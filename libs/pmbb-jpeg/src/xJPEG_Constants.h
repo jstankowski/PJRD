@@ -14,6 +14,7 @@ class xJPEG_Constants
 public:
   static constexpr int32 c_MaxQuantTabs  = 4;
   static constexpr int32 c_MaxHuffTabs   = 4;
+  static constexpr int32 c_MaxArithSets  = 4;
   static constexpr int32 c_MaxComponents = 4;
 
   static constexpr int32 c_Log2BlockSize = 3;
@@ -62,6 +63,11 @@ public:
   static const uint16 c_HuffCodeDefaultChromaDC[ 16];
   static const uint8  c_HuffLenDefaultChromaAC [256];
   static const uint16 c_HuffCodeDefaultChromaAC[256];
+
+  //default arithmetic conditioning
+  static constexpr uint8 c_DefaultL  = 0;
+  static constexpr uint8 c_DefaultU  = 1;
+  static constexpr uint8 c_DefaultKx = 5;
 
 public:
   static void  GenerateQuantTable    (uint8* QuantTable, eCmp Cmp, int32 Q, eQTLa QuantTabLayout);

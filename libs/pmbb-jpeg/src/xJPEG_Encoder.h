@@ -1,5 +1,5 @@
 ﻿/*
-    SPDX-FileCopyrightText: 2020-2024 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2020-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 #pragma once
@@ -9,9 +9,30 @@
 #include "xPicYUV.h"
 #include "xJPEG_Quant.h"
 #include "xJPEG_EntropyHuffman.h"
+#include "xJPEG_EntropyArithm.h"
 #include <array>
+#include <map>
 
 namespace PMBB_NAMESPACE::JPEG {
+
+//=====================================================================================================================================================================================
+
+struct xOptNode
+{
+  static constexpr int32 c_BA = xJPEG_Constants::c_BlockArea;
+
+public:
+  int16 m_CoeffsQuantScan[c_BA];
+  flt64 m_Cost;
+
+  xOptNode() {}
+
+  xOptNode(const int16* CoeffsQuantScan, flt64 Cost)
+  {
+    memcpy(m_CoeffsQuantScan, CoeffsQuantScan, c_BA * sizeof(int16));
+    m_Cost = Cost;
+  }
+};
 
 //=====================================================================================================================================================================================
 
@@ -30,7 +51,9 @@ protected:
   bool    m_EmitEntropyTabs = true;
   //optimization
   bool    m_OptQuantCoeffs     = false; //Use RDQO
+  eQntOpt m_OptQuantAlgorithm  = eQntOpt::INVALID;
   bool    m_ProcessZeroCoeffs  = false;
+  int32   m_NumOptBestCands    = 0;
   eLmbd   m_LambdaEstMode      = eLmbd::INVALID;
   bool    m_OptEntropyTables   = false;
   int32   m_NumOptPassesBlock  = 0;
@@ -42,9 +65,8 @@ protected:
   flt64V4 m_Lambda = { 1.0, 1.0, 1.0, 1.0 };
 
   //Tools
-  xQuantizerSet m_QuantMain;
-  xQuantizerSet m_QuantAuxD;
-  xQuantizerSet m_QuantAuxI;  
+  xQuantizerSet                 m_QuantMain;
+  std::map<int32, xQuantizerSet>m_QuantAuxs;
 
   //Huffman
   xEntropyHuffEstimator            m_EntropyHuffEst ; //no need for multiple instances - xEntropyHuffEstimator is stateless
@@ -52,6 +74,10 @@ protected:
   xHuffEncoderBank                 m_EncoderHuffBank;
   std::vector<xEntropyHuffEncoder> m_EntropyHuffEncs;
 
+  //Arithmetic
+  std::vector<xEntropyAritEstimator > m_EntropyAritEsts;
+  std::vector<xEntropyAritEncoder   > m_EntropyAritEncs;
+ 
   //Buffers
   xPicYUV* m_PicYCbCr444 = nullptr;
   xPicYUV* m_PicYCbCr4XX = nullptr;
@@ -79,11 +105,11 @@ protected:
   uint64 m_Ticks__WriteOut = 0;
 
 public:
-  void create (int32V2 PictureSize, eCrF ChromaFormat, xThreadPool* ThreadPool = nullptr);
+  void create (int32V2 PictureSize, eCrF ChromaFormat, eEntrTp EntropyType, xThreadPool* ThreadPool = nullptr);
   void destroy();
 
   void setMarkerEmit(bool EmitAPP0, bool EmitQuantTabs, bool EmitEntropyTabs);
-  void setOptQuant  (bool OptQuantCoeffs, bool ProcessZeroCoeffs, eLmbd LambdaEstMode);
+  void setOptQuant  (bool OptQuantCoeffs, eQntOpt OptQuantAlgorithm, bool ProcessZeroCoeffs, int32 NumOptBestCands, eLmbd LambdaEstMode);
   void setOptEntropy(bool OptEntropyTables);
   void setOptPass   (int32 NumBlockOptPasses, int32 NumPicOptPasses);
   void setOptClcMode(eCalkMd BlkOptDistCalcMode, eCalkMd BlkOptBitsCalcMode);
@@ -116,7 +142,15 @@ protected:
   int64V4 xCalcBitsHuffPic(const int16* CoeffsQuantScanV[]);
   int64V4 xCalcBitsHuffSlc(const int16* CoeffsQuantScanV[], int32 MCU_IdxFirst, int32 MCU_IdxLast);
   int64V4 xCalcBitsHuffMCU(const int16* CoeffsQuantScanV[], int32 MCU_Idx);
-  int64V4 xCalcBitsPic    (const int16* CoeffsQuantScanV[]) { return xCalcBitsHuffPic(CoeffsQuantScanV); }
+  int64V4 xCalcBitsAritPic(const int16* CoeffsQuantScanV[]);
+  int64V4 xCalcBitsAritSlc(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_IdxFirst, int32 MCU_IdxLast);
+  void    xCalcBitsAritMCU(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_Idx);
+
+  template<eEntrTp ET> int64V4 xtCalcBitsPic(const int16* CoeffsQuantScanV[]);
+  template<eEntrTp ET> int64V4 xtCalcBitsSlc(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_IdxFirst, int32 MCU_IdxLast);
+  template<eEntrTp ET> int64V4 xtCalcBitsMCU(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_Idx);
+
+  int64V4 xCalcBitsPic    (const int16* CoeffsQuantScanV[]);
   int64V4 xCalcDistPicSSD (const xPicYUV* Tst, const xPicYUV* Ref);
   int64V4 xEstDistPicSSD  (const int16* CoeffsTransOrgV[], const int16* CoeffsTransRecV[]);
   int64V4 xCalcDistPic    (const int16* CoeffsQuantScanV[], const xQuantizerSet& Quant, const xPicYUV* PictureRef);
@@ -127,23 +161,45 @@ protected:
   void   xOptQuantHuffSlc(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, int32 MCU_IdxFirst, int32 MCU_IdxLast);
   void   xOptQuantHuffMCU(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* CmpPtrV[], const int32 CmpStrideV[], int32 MCU_Idx);
   void   xOptQuantHuffBLK(int16* OptCoeffQuantScan, const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const uint16* SamplesOrg, eCmp CmpId, int32 LastDC);
+  void   xOptQuantHuffBLK2(int16* OptCoeffQuantScan, const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const uint16* SamplesOrg, eCmp CmpId, int32 LastDC, int32 Limit);
+  void   xOptQuantAritPic(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture);
+  void   xOptQuantAritSlc(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, int32 SliceIdx);
+  void   xOptQuantAritMCU(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* CmpPtrV[], const int32 CmpStrideV[], int32 SliceIdx, int32 MCU_Idx);
+  void   xOptQuantAritBLK(int16* OptCoeffQuantScan, const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const uint16* SamplesOrg, int32 SliceIdx, eCmp CmpId);
+  void   xOptQuantAritBLK2(int16* OptCoeffQuantScan, const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const uint16* SamplesOrg, int32 SliceIdx, eCmp CmpId, int32 Limit);
+  
+  template<eEntrTp ET> void xtOptQuantPic(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture);
+  template<eEntrTp ET> void xtOptQuantSlc(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, int32 SliceIdx);
+  template<eEntrTp ET> void xtOptQuantMCU(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* CmpPtrV[], const int32 CmpStrideV[], int32 SliceIdx, int32 MCU_Idx);
+  template<eEntrTp ET> void xtOptQuantBLK1(int16* OptCoeffQuantScan, const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const uint16* SamplesOrg, int32 SliceIdx, eCmp CmpId);
+  template<eEntrTp ET> void xtOptQuantBLK2(int16* OptCoeffQuantScan, const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const uint16* SamplesOrg, int32 SliceIdx, eCmp CmpId, int32 Limit);
+
+  
   uint64 xCalcDistBLK     (const int16* CoeffsQuantScan, const int16* CoeffsTransOrgScan, const uint16* SamplesOrg, const xQuantizer& Quantizer);
   uint64 xCalkExactDistBLK(const int16* CoeffsQuantScan, const uint16* SamplesOrg       , const xQuantizer& Quantizer);
   uint64 xCalkApprxDistBLK(const int16* CoeffsQuantScan, const int16* CoeffsTransOrgScan, const xQuantizer& Quantizer);
-  void   xOptQuantPic     (int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture) { xOptQuantHuffPic(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, Picture); }
+  void   xOptQuantPic     (int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture);
   
-  //Huffman tables optimization
+  //Huffman tables & Arithmetic conditioning optimization
   void   xOptHuffPic(const int16* CoeffsQuantScanV[]);
   void   xCntHuffPic(const int16* CoeffsQuantScanV[]);
   void   xCntHuffRng(const int16* CoeffsQuantScan, int32 CounterIdx, int32 HuffTabIdDC, int32 HuffTabIdAC, int32 BlockIdxBeg, int32 BlockIdxEnd, int32 BlocksPerSlice);
-  void   xOptEntropyPic(const int16* CoeffsQuantScanV[]) { xOptHuffPic(CoeffsQuantScanV); }
+  void   xOptAritPic         (const int16* CoeffsQuantScanV[]);
+  void   xCalcAritCondDC     (std::vector<int64V4>& BitsDC, const int16* CoeffsQuantScanV[]);
+  void   xCalcAritCondAC     (std::vector<int64V4>& BitsAC, const int16* CoeffsQuantScanV[]);
+  int64  xCalcBitsAritSliceDC(const int16* CoeffsQuantScanV[], eCmp Cmp, int32 SliceIdx, int32 U, int32 L);
+  int64  xCalcBitsAritSliceAC(const int16* CoeffsQuantScanV[], eCmp Cmp, int32 SliceIdx, int32 Kx);
+  void   xOptEntropyPic(const int16* CoeffsQuantScanV[]);
 
   //Entropy encode
   void xEncodeHuffPic(const int16* CoeffsQuantScanV[]);
   void xEncodeHuffSlc(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_IdxFirst, int32 MCU_IdxLast);
   void xEncodeHuffChk(const int16* CoeffsQuantScanV[], int32 ChunkIdx, int32 MCU_IdxFirst, int32 MCU_IdxLast);
   void xEncodeHuffMCU(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_Idx);
-  void xEncodePic    (const int16* CoeffsQuantScanV[]) { xEncodeHuffPic(CoeffsQuantScanV); }
+  void xEncodeAritPic(const int16* CoeffsQuantScanV[]);
+  void xEncodeAritSlc(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_IdxFirst, int32 MCU_IdxLast);
+  void xEncodeAritMCU(const int16* CoeffsQuantScanV[], int32 SliceIdx, int32 MCU_Idx);
+  void xEncodePic    (const int16* CoeffsQuantScanV[]);
 
   //Writeout
   void xWritePic(xByteBuffer* OutputBuffer);

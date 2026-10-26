@@ -206,6 +206,15 @@ public:
               ((int32)Marker >= (int32)eMarker::SOF13 && (int32)Marker <= (int32)eMarker::SOF15));
     }
 
+    eEntrTp determineEntropyType()
+    {
+      int32 M = m_Type + (int32)eMarker::SOF0;
+
+      if     ((M >= (int32)eMarker::SOF0 && M <= (int32)eMarker::SOF3 ) || (M >= (int32)eMarker::SOF5  && M <= (int32)eMarker::SOF7 )) { return eEntrTp::Huffman   ; }
+      else if((M >= (int32)eMarker::SOF9 && M <= (int32)eMarker::SOF11) || (M >= (int32)eMarker::SOF13 && M <= (int32)eMarker::SOF15)) { return eEntrTp::Arithmetic; }
+      else                                                                                                                             { return eEntrTp::INVALID   ; }      
+    }
+
     bool isBaseline() const { return m_Type == (int32)eMarker::SOF0                                  ; }
     bool isExtended() const { return m_Type == (int32)eMarker::SOF1 || m_Type == (int32)eMarker::SOF9; }
   };
@@ -252,6 +261,45 @@ public:
   };
 
   using tHuffTablesV = std::vector<xHuffTable>;
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+  class xArithCond
+  {
+  public:
+    using tClass = eEntropyTableClass;
+
+  protected:
+    uint8  m_Idx   = 0              ; //Tb
+    tClass m_Class = tClass::Invalid; //Tc
+    uint8  m_L     = 0xFF           ; //Cs for DC
+    uint8  m_U     = 0xFF           ; //Cs for DC
+    uint8  m_Kx    = 0xFF           ; //Cs for AC
+
+  public:
+    int32 Absorb     (xByteBuffer* Input );
+    int32 Emit       (xByteBuffer* Output) const; 
+    void  InitDefault(uint8 Idx, tClass Class);
+    void  InitCustom (uint8 Idx, tClass Class, int32 U, int32 L, int32 Kx);
+    tStr  Format     (const tStr& Prefix = "  ") const;
+    int32 getLength  () const { return 2; }
+
+    int32  getIdx  (         ) const { return m_Idx;   }
+    void   setIdx  (int32 Idx)       { m_Idx = (uint8)Idx;   }
+    tClass getClass(         ) const { return m_Class; }
+    void   setClass(tClass HC)       { m_Class = HC; }
+
+    int32  getL    (         ) const { return m_L ; }
+    int32  getU    (         ) const { return m_U ; }
+    int32  getKx   (         ) const { return m_Kx; }
+
+    bool isDC() const { return (m_Class == tClass::DC); }
+    bool isAC() const { return (m_Class == tClass::AC); }
+
+    static std::vector<xArithCond> createDefaultArithCond(bool CommonChroma);
+  };
+
+  using tArithCondsV = std::vector<xArithCond>;
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -306,6 +354,9 @@ public:
   static bool    ReadDHT         (xByteBuffer* Input ,       std::vector<xHuffTable>& HuffTables);
   static void    WriteDHT        (xByteBuffer* Output, const std::vector<xHuffTable>& HuffTables);
   static void    WriteDefaultDHT (xByteBuffer* Output);
+
+  static bool    ReadDAC         (xByteBuffer* Input ,       std::vector<xArithCond>& ArithConds);
+  static void    WriteDAC        (xByteBuffer* Output, const std::vector<xArithCond>& ArithConds);
 
   static bool    ReadSOS         (xByteBuffer* Input ,       xSOS& SOS);
   static bool    SkipSOS         (xByteBuffer* Input                  );
